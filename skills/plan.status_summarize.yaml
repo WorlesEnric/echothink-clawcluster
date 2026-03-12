@@ -1,0 +1,38 @@
+# ClawCluster skill manifest for cross-source project status summaries.
+apiVersion: clawcluster/v1
+kind: Skill
+metadata:
+  name: plan.status_summarize
+  version: 1.0.0
+spec:
+  category: plan
+  runtimeClass: worker-container
+  description: Summarize current project or work-item status by combining workspace records, graph context, Outline notes, and optional task-run telemetry into a concise decision-ready update.
+  inputs:
+    - workspace_id: string # Workspace, project, or delivery-stream identifier used to scope all source lookups.
+    - include_task_runs: boolean # When true, include recent execution logs, run outcomes, and latency or cost signals from task history.
+    - include_graph_context: boolean # When true, enrich the summary with Graphiti episodes, related entities, and temporal deltas.
+  outputs:
+    - status_summary: markdown # Executive summary of progress, recent changes, overall trajectory, and notable risks.
+    - blockers: array[object] # Active blockers with severity, owner, first-seen timestamp, and recommended unblock action.
+    - next_actions: array[object] # Prioritized next steps sized for immediate execution and tied to current dependencies.
+    - timeline_delta: object # Comparison of planned versus actual milestones, slipped dates, and forecast movement.
+  tools:
+    - supabase.query
+    - graphiti.search
+    - outline.api
+    - higress.llm
+  mcpServices:
+    - supabase
+    - graphiti
+    - outline
+    - higress
+  guardrails:
+    approvalClass: none
+    maxDurationSec: 180
+    maxCostUsd: 0.75
+    requiresValidation: [] # Read-mostly summarization has no required post-run validation step.
+  publishes: [] # The generated status package is returned to the caller only.
+  retryPolicy:
+    maxAttempts: 2
+    backoffSeconds: 10

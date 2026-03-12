@@ -1,0 +1,98 @@
+{{- $fullname := include "clawcluster.fullname" . -}}
+{{- $namespace := include "clawcluster.namespace" . -}}
+{{- if and .Values.higress.storage.enabled (not .Values.higress.storage.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-higress-data
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "higress") | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.higress.storage.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.higress.storage.size }}
+  {{- include "clawcluster.storageClass" . | nindent 2 }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-higress
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "higress") | nindent 4 }}
+spec:
+  replicas: {{ .Values.higress.replicas }}
+  selector:
+    matchLabels:
+      {{- include "clawcluster.componentSelectorLabels" (dict "ctx" . "component" "higress") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "higress") | nindent 8 }}
+    spec:
+      {{- with .Values.higress.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.higress.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.higress.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: higress
+          {{- include "clawcluster.image" (dict "image" .Values.higress.image "policy" .Values.global.imagePullPolicy) | nindent 10 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.higress.service.httpPort }}
+            - name: https
+              containerPort: {{ .Values.higress.service.httpsPort }}
+            - name: admin
+              containerPort: {{ .Values.higress.service.adminPort }}
+          env:
+            - name: DOMAIN
+              value: {{ default .Values.global.domain .Values.higress.config.domain | quote }}
+            - name: CLUSTER_NAME
+              value: {{ .Values.higress.config.clusterName | quote }}
+            - name: HIGRESS_BOOTSTRAP_CONFIG
+              value: /etc/clawcluster/higress/gateway.yaml
+          resources:
+            {{- toYaml .Values.higress.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/clawcluster/higress/gateway.yaml
+              subPath: gateway.yaml
+            - name: data
+              mountPath: /var/lib/higress
+          livenessProbe:
+            httpGet:
+              path: /
+              port: admin
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: admin
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $fullname }}-higress
+        - name: data
+          {{- if .Values.higress.storage.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.higress.storage.existingClaim | default (printf "%s-higress-data" $fullname) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

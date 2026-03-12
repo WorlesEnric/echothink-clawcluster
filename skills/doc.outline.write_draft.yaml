@@ -1,0 +1,34 @@
+# ClawCluster skill manifest for creating or updating Outline drafts.
+apiVersion: clawcluster/v1
+kind: Skill
+metadata:
+  name: doc.outline.write_draft
+  version: 1.0.0
+spec:
+  category: doc
+  runtimeClass: worker-container
+  description: Create a new Outline draft or update an existing draft with markdown content, preserving collection placement and optionally targeting a specific section path during updates.
+  inputs:
+    - outline_doc_id: string # Optional existing Outline document UUID to update; omit to create a new draft document.
+    - collection_id: string # Target Outline collection UUID where the draft should be created or maintained.
+    - title: string # Human-readable document title shown in Outline navigation, search, and backlinks.
+    - content_markdown: markdown # Full markdown body to write, including headings, tables, lists, and callouts supported by Outline.
+    - section_path: array[string] # Optional heading path under which to replace or append content when updating an existing draft.
+  outputs:
+    - outline_doc_id: string # UUID of the created or updated draft document.
+    - doc_url: uri # Canonical Outline URL that reviewers can open directly.
+    - revision_id: string # Server-side revision identifier or update token returned after the write succeeds.
+  tools:
+    - outline.api
+  mcpServices:
+    - outline
+  guardrails:
+    approvalClass: low
+    maxDurationSec: 120
+    maxCostUsd: 0.50
+    requiresValidation: [] # Draft publication is low-risk and does not require a separate validation stage.
+  publishes:
+    - outline.draft
+  retryPolicy:
+    maxAttempts: 2
+    backoffSeconds: 15

@@ -1,0 +1,107 @@
+{{- $fullname := include "clawcluster.fullname" . -}}
+{{- $namespace := include "clawcluster.namespace" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-publisher-bridge
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "publisher-bridge") | nindent 4 }}
+spec:
+  replicas: {{ .Values.publisherBridge.replicas }}
+  selector:
+    matchLabels:
+      {{- include "clawcluster.componentSelectorLabels" (dict "ctx" . "component" "publisher-bridge") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "publisher-bridge") | nindent 8 }}
+    spec:
+      {{- with .Values.publisherBridge.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.publisherBridge.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.publisherBridge.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: publisher-bridge
+          {{- include "clawcluster.image" (dict "image" .Values.publisherBridge.image "policy" .Values.global.imagePullPolicy) | nindent 10 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.publisherBridge.service.port }}
+          env:
+            - name: PORT
+              value: {{ .Values.publisherBridge.service.port | quote }}
+            - name: CLUSTER_NAME
+              value: {{ .Values.global.clusterName | quote }}
+            - name: DOMAIN
+              value: {{ .Values.global.domain | quote }}
+            - name: OPENCLAW_MANAGER_URL
+              value: {{ printf "http://%s-hiclaw-manager:%v" $fullname .Values.hiclawManager.service.port | quote }}
+            - name: MINIO_ENDPOINT
+              value: {{ .Values.externalServices.minio.endpoint | quote }}
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalServices.minio.existingSecret }}
+                  key: {{ .Values.externalServices.minio.accessKeyKey }}
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalServices.minio.existingSecret }}
+                  key: {{ .Values.externalServices.minio.secretKeyKey }}
+            - name: MINIO_HICLAW_BUCKET
+              value: {{ .Values.externalServices.minio.bucket | quote }}
+            - name: MTLS_CA_CERT_PATH
+              value: {{ .Values.global.caMountPath | quote }}
+            - name: WORKER_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.security.existingSecret }}
+                  key: {{ .Values.security.workerJwtSecretKey }}
+            {{- range $name, $value := .Values.publisherBridge.env }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- range $name, $ref := .Values.publisherBridge.secretEnv }}
+            - name: {{ $name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $ref.existingSecret | default $.Values.publisherBridge.existingSecret }}
+                  key: {{ $ref.key }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.publisherBridge.resources | nindent 12 }}
+          volumeMounts:
+            - name: runtime
+              mountPath: /var/lib/clawcluster
+            - name: ca-cert
+              mountPath: /etc/clawcluster/ca
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 5
+      volumes:
+        - name: runtime
+          emptyDir: {}
+        - name: ca-cert
+          secret:
+            secretName: {{ .Values.security.caSecretName }}
+            items:
+              - key: {{ .Values.security.caSecretKey }}
+                path: ca.pem

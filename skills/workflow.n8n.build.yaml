@@ -1,0 +1,38 @@
+# ClawCluster skill manifest for drafting n8n workflows from specifications.
+apiVersion: clawcluster/v1
+kind: Skill
+metadata:
+  name: workflow.n8n.build
+  version: 1.0.0
+spec:
+  category: workflow
+  runtimeClass: worker-container
+  description: Draft an n8n workflow definition from a structured specification, align trigger mechanics with the provided brief, and validate the result with syntax and sample-execution checks.
+  inputs:
+    - workflow_spec: object # Structured workflow specification describing business logic, integrations, branching rules, and success criteria.
+    - trigger_type: string # Required n8n trigger class such as manual, webhook, schedule, or event-based source trigger.
+    - sample_inputs: array[object] # Optional sample payloads or event fixtures used to verify the workflow against realistic execution paths.
+    - outline_brief_doc_id: string # Outline document id containing the source brief, process map, or requirements narrative.
+  outputs:
+    - n8n_workflow_json: json # Import-ready n8n workflow JSON with nodes, expressions, credential refs, and connections.
+    - workflow_summary: markdown # Human-readable summary of node responsibilities, trigger assumptions, and follow-up configuration work.
+    - test_report: object # Validation results covering syntax checks, simulated runs, and any failing branches or missing credentials.
+  tools:
+    - n8n.api
+    - outline.api
+    - higress.llm
+  mcpServices:
+    - n8n
+    - outline
+    - higress
+  guardrails:
+    approvalClass: medium
+    maxDurationSec: 600
+    maxCostUsd: 3.0
+    requiresValidation:
+      - workflow_syntax_check
+      - sample_execution
+  publishes: [] # The workflow draft is returned for approval before any platform write occurs.
+  retryPolicy:
+    maxAttempts: 2
+    backoffSeconds: 30

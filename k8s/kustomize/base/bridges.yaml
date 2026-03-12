@@ -1,0 +1,543 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: intake-bridge
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: intake-bridge
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/component: intake-bridge
+  ports:
+    - name: http
+      port: 8100
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: intake-bridge
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: intake-bridge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: clawcluster
+      app.kubernetes.io/component: intake-bridge
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: kustomize
+        app.kubernetes.io/instance: clawcluster
+        app.kubernetes.io/part-of: clawcluster
+        app.kubernetes.io/component: intake-bridge
+    spec:
+      containers:
+        - name: intake-bridge
+          image: clawcluster/intake-bridge:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8100
+          env:
+            - name: PORT
+              value: "8100"
+            - name: CLUSTER_NAME
+              value: clawcluster-dev
+            - name: DOMAIN
+              value: clawcluster.example.com
+            - name: OPENCLAW_MANAGER_URL
+              value: http://hiclaw-manager:8088
+            - name: MINIO_ENDPOINT
+              value: https://minio.echothink.internal
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-upstream
+                  key: minio-access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-upstream
+                  key: minio-secret-key
+            - name: MINIO_HICLAW_BUCKET
+              value: clawcluster-sharedfs
+            - name: MTLS_CA_CERT_PATH
+              value: /etc/clawcluster/ca/ca.pem
+            - name: WORKER_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-runtime
+                  key: worker-jwt-secret
+            - name: OUTLINE_URL
+              value: https://outline.echothink.internal
+            - name: GITLAB_URL
+              value: https://gitlab.echothink.internal
+            - name: SUPABASE_URL
+              value: https://supabase.echothink.internal
+            - name: DIFY_URL
+              value: https://dify.echothink.internal
+            - name: N8N_URL
+              value: https://n8n.echothink.internal
+            - name: OUTLINE_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-bridges
+                  key: outline-api-token
+            - name: GITLAB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-bridges
+                  key: gitlab-token
+            - name: SUPABASE_ANON_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-bridges
+                  key: supabase-anon-key
+            - name: DIFY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-bridges
+                  key: dify-api-key
+            - name: N8N_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-bridges
+                  key: n8n-api-key
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: runtime
+              mountPath: /var/lib/clawcluster
+            - name: ca-cert
+              mountPath: /etc/clawcluster/ca
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 5
+      volumes:
+        - name: runtime
+          emptyDir: {}
+        - name: ca-cert
+          secret:
+            secretName: clawcluster-runtime
+            items:
+              - key: ca.pem
+                path: ca.pem
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: publisher-bridge
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: publisher-bridge
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/component: publisher-bridge
+  ports:
+    - name: http
+      port: 8101
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: publisher-bridge
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: publisher-bridge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: clawcluster
+      app.kubernetes.io/component: publisher-bridge
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: kustomize
+        app.kubernetes.io/instance: clawcluster
+        app.kubernetes.io/part-of: clawcluster
+        app.kubernetes.io/component: publisher-bridge
+    spec:
+      containers:
+        - name: publisher-bridge
+          image: clawcluster/publisher-bridge:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8101
+          env:
+            - name: PORT
+              value: "8101"
+            - name: CLUSTER_NAME
+              value: clawcluster-dev
+            - name: DOMAIN
+              value: clawcluster.example.com
+            - name: OPENCLAW_MANAGER_URL
+              value: http://hiclaw-manager:8088
+            - name: MINIO_ENDPOINT
+              value: https://minio.echothink.internal
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-upstream
+                  key: minio-access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-upstream
+                  key: minio-secret-key
+            - name: MINIO_HICLAW_BUCKET
+              value: clawcluster-sharedfs
+            - name: MTLS_CA_CERT_PATH
+              value: /etc/clawcluster/ca/ca.pem
+            - name: WORKER_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-runtime
+                  key: worker-jwt-secret
+            - name: OUTLINE_URL
+              value: https://outline.echothink.internal
+            - name: GITLAB_URL
+              value: https://gitlab.echothink.internal
+            - name: SUPABASE_URL
+              value: https://supabase.echothink.internal
+            - name: OUTLINE_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-bridges
+                  key: outline-api-token
+            - name: GITLAB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-bridges
+                  key: gitlab-token
+            - name: SUPABASE_SERVICE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-bridges
+                  key: supabase-service-key
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: runtime
+              mountPath: /var/lib/clawcluster
+            - name: ca-cert
+              mountPath: /etc/clawcluster/ca
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 5
+      volumes:
+        - name: runtime
+          emptyDir: {}
+        - name: ca-cert
+          secret:
+            secretName: clawcluster-runtime
+            items:
+              - key: ca.pem
+                path: ca.pem
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: policy-bridge
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: policy-bridge
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/component: policy-bridge
+  ports:
+    - name: http
+      port: 8102
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-bridge
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: policy-bridge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: clawcluster
+      app.kubernetes.io/component: policy-bridge
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: kustomize
+        app.kubernetes.io/instance: clawcluster
+        app.kubernetes.io/part-of: clawcluster
+        app.kubernetes.io/component: policy-bridge
+    spec:
+      containers:
+        - name: policy-bridge
+          image: clawcluster/policy-bridge:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8102
+          env:
+            - name: PORT
+              value: "8102"
+            - name: CLUSTER_NAME
+              value: clawcluster-dev
+            - name: DOMAIN
+              value: clawcluster.example.com
+            - name: OPENCLAW_MANAGER_URL
+              value: http://hiclaw-manager:8088
+            - name: MINIO_ENDPOINT
+              value: https://minio.echothink.internal
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-upstream
+                  key: minio-access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-upstream
+                  key: minio-secret-key
+            - name: MINIO_HICLAW_BUCKET
+              value: clawcluster-sharedfs
+            - name: MTLS_CA_CERT_PATH
+              value: /etc/clawcluster/ca/ca.pem
+            - name: WORKER_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-runtime
+                  key: worker-jwt-secret
+            - name: GITLAB_URL
+              value: https://gitlab.echothink.internal
+            - name: SUPABASE_URL
+              value: https://supabase.echothink.internal
+            - name: GITLAB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-bridges
+                  key: gitlab-token
+            - name: SUPABASE_SERVICE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-bridges
+                  key: supabase-service-key
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: runtime
+              mountPath: /var/lib/clawcluster
+            - name: ca-cert
+              mountPath: /etc/clawcluster/ca
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 5
+      volumes:
+        - name: runtime
+          emptyDir: {}
+        - name: ca-cert
+          secret:
+            secretName: clawcluster-runtime
+            items:
+              - key: ca.pem
+                path: ca.pem
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: observability-bridge
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: observability-bridge
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/component: observability-bridge
+  ports:
+    - name: http
+      port: 8103
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: observability-bridge
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: observability-bridge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: clawcluster
+      app.kubernetes.io/component: observability-bridge
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: kustomize
+        app.kubernetes.io/instance: clawcluster
+        app.kubernetes.io/part-of: clawcluster
+        app.kubernetes.io/component: observability-bridge
+    spec:
+      containers:
+        - name: observability-bridge
+          image: clawcluster/observability-bridge:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8103
+          env:
+            - name: PORT
+              value: "8103"
+            - name: CLUSTER_NAME
+              value: clawcluster-dev
+            - name: DOMAIN
+              value: clawcluster.example.com
+            - name: OPENCLAW_MANAGER_URL
+              value: http://hiclaw-manager:8088
+            - name: MINIO_ENDPOINT
+              value: https://minio.echothink.internal
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-upstream
+                  key: minio-access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-upstream
+                  key: minio-secret-key
+            - name: MINIO_HICLAW_BUCKET
+              value: clawcluster-sharedfs
+            - name: MTLS_CA_CERT_PATH
+              value: /etc/clawcluster/ca/ca.pem
+            - name: WORKER_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-runtime
+                  key: worker-jwt-secret
+            - name: LANGFUSE_URL
+              value: https://langfuse.echothink.internal
+            - name: GRAPHITI_URL
+              value: https://graphiti.echothink.internal
+            - name: LITELLM_URL
+              value: https://litellm.echothink.internal
+            - name: HATCHET_SERVER_URL
+              value: https://hatchet.echothink.internal
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-bridges
+                  key: langfuse-secret-key
+            - name: LITELLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-bridges
+                  key: litellm-api-key
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: runtime
+              mountPath: /var/lib/clawcluster
+            - name: ca-cert
+              mountPath: /etc/clawcluster/ca
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 5
+      volumes:
+        - name: runtime
+          emptyDir: {}
+        - name: ca-cert
+          secret:
+            secretName: clawcluster-runtime
+            items:
+              - key: ca.pem
+                path: ca.pem

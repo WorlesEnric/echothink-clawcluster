@@ -1,0 +1,62 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $fullname := include "clawcluster.fullname" . -}}
+{{- $namespace := include "clawcluster.namespace" . -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-worker-egress
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "workers") | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          {{- range .Values.workers }}
+          - {{ .name }}
+          {{- end }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $namespace }}
+          podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - higress
+                  - tuwunel
+                  - element-web
+                  - hiclaw-manager
+                  - intake-bridge
+                  - publisher-bridge
+                  - policy-bridge
+                  - observability-bridge
+      ports:
+        {{- range .Values.networkPolicy.internalPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.networkPolicy.minioCIDR }}
+      ports:
+        {{- range .Values.networkPolicy.minioPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}

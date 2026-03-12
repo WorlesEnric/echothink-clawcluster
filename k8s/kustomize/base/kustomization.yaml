@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: clawcluster
+resources:
+  - namespace.yaml
+  - higress.yaml
+  - tuwunel.yaml
+  - element-web.yaml
+  - hiclaw-manager.yaml
+  - workers.yaml
+  - bridges.yaml
+  - ingress.yaml

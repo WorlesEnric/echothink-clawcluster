@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: element-web-config
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: element-web
+data:
+  config.json: |
+    {
+      "default_server_config": {
+        "m.homeserver": {
+          "base_url": "https://matrix.clawcluster.example.com",
+          "server_name": "matrix.clawcluster.example.com"
+        }
+      },
+      "disable_guests": true,
+      "disable_custom_urls": true,
+      "brand": "EchoThink ClawCluster",
+      "default_theme": "dark",
+      "room_directory": {
+        "servers": ["matrix.clawcluster.example.com"]
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: element-web
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: element-web
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/component: element-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: element-web
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: element-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: clawcluster
+      app.kubernetes.io/component: element-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: kustomize
+        app.kubernetes.io/instance: clawcluster
+        app.kubernetes.io/part-of: clawcluster
+        app.kubernetes.io/component: element-web
+    spec:
+      containers:
+        - name: element-web
+          image: vectorim/element-web:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.json
+              subPath: config.json
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: element-web-config

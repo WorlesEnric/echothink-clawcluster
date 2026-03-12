@@ -1,0 +1,243 @@
+x-prod-affinity: &prodAffinity
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          topologyKey: kubernetes.io/hostname
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/part-of
+                operator: In
+                values:
+                  - clawcluster
+
+global:
+  domain: clawcluster.example.com
+  namespace: clawcluster
+  storageClass: premium-rwx
+  imagePullPolicy: IfNotPresent
+  clusterName: clawcluster-prod
+  ingressClassName: nginx
+
+higress:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+  service:
+    external:
+      enabled: true
+  affinity: *prodAffinity
+
+tuwunel:
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  storage:
+    size: 100Gi
+  affinity: *prodAffinity
+
+elementWeb:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  affinity: *prodAffinity
+
+hiclawManager:
+  replicas: 2
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  workspace:
+    size: 100Gi
+  affinity: *prodAffinity
+
+workers:
+  - name: planner-worker
+    image: ghcr.io/opencoai/openclaw:latest
+    replicas: 2
+    workerClass: planner
+    model: claude-sonnet-4-6
+    description: Breaks goals into executable plans and acceptance criteria.
+    existingSecret: clawcluster-workers
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    env:
+      OUTLINE_URL: https://outline.echothink.internal
+      GRAPHITI_URL: https://graphiti.echothink.internal
+      HATCHET_SERVER_URL: https://hatchet.echothink.internal
+    secretEnv: {}
+    affinity: *prodAffinity
+    nodeSelector: {}
+    tolerations: []
+  - name: workflow-worker
+    image: ghcr.io/opencoai/openclaw:latest
+    replicas: 2
+    workerClass: workflow
+    model: claude-sonnet-4-6
+    description: Automates workflows, orchestrators, and delivery pipelines.
+    existingSecret: clawcluster-workers
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    env:
+      HATCHET_SERVER_URL: https://hatchet.echothink.internal
+      DIFY_URL: https://dify.echothink.internal
+      N8N_URL: https://n8n.echothink.internal
+    secretEnv: {}
+    affinity: *prodAffinity
+    nodeSelector: {}
+    tolerations: []
+  - name: coding-worker
+    image: ghcr.io/opencoai/openclaw:latest
+    replicas: 3
+    workerClass: coding
+    model: claude-sonnet-4-6
+    description: Implements code changes and prepares technical artifacts.
+    existingSecret: clawcluster-workers
+    resources:
+      requests:
+        cpu: "1"
+        memory: 1Gi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+    env:
+      GITLAB_URL: https://gitlab.echothink.internal
+      SUPABASE_URL: https://supabase.echothink.internal
+    secretEnv:
+      GITLAB_TOKEN:
+        key: gitlab-token
+      SUPABASE_SERVICE_KEY:
+        key: supabase-service-key
+    affinity: *prodAffinity
+    nodeSelector: {}
+    tolerations: []
+  - name: qa-worker
+    image: ghcr.io/opencoai/openclaw:latest
+    replicas: 2
+    workerClass: qa
+    model: claude-sonnet-4-6
+    description: Verifies outputs and produces evidence-backed quality reports.
+    existingSecret: clawcluster-workers
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    env:
+      HATCHET_SERVER_URL: https://hatchet.echothink.internal
+      LANGFUSE_URL: https://langfuse.echothink.internal
+    secretEnv:
+      LANGFUSE_SECRET_KEY:
+        key: langfuse-secret-key
+    affinity: *prodAffinity
+    nodeSelector: {}
+    tolerations: []
+  - name: knowledge-worker
+    image: ghcr.io/opencoai/openclaw:latest
+    replicas: 2
+    workerClass: knowledge
+    model: claude-sonnet-4-6
+    description: Curates durable knowledge and long-lived operational memory.
+    existingSecret: clawcluster-workers
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    env:
+      OUTLINE_URL: https://outline.echothink.internal
+      GRAPHITI_URL: https://graphiti.echothink.internal
+      LITELLM_URL: https://litellm.echothink.internal
+    secretEnv:
+      OUTLINE_API_TOKEN:
+        key: outline-api-token
+      LITELLM_API_KEY:
+        key: litellm-api-key
+    affinity: *prodAffinity
+    nodeSelector: {}
+    tolerations: []
+
+intakeBridge:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  affinity: *prodAffinity
+
+publisherBridge:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  affinity: *prodAffinity
+
+policyBridge:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  affinity: *prodAffinity
+
+observabilityBridge:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  affinity: *prodAffinity
+
+ingress:
+  tls:
+    enabled: true
+    secretName: clawcluster-tls
+    clusterIssuer: letsencrypt-production
+
+networkPolicy:
+  minioCIDR: 10.10.0.0/24

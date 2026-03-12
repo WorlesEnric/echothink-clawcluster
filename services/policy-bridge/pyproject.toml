@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "policy-bridge"
+version = "0.1.0"
+description = "Policy enforcement and approval gates for ClawCluster work items"
+requires-python = ">=3.12"
+dependencies = [
+  "asyncpg>=0.29",
+  "fastapi>=0.115",
+  "httpx>=0.27",
+  "pydantic>=2,<3",
+  "python-dotenv>=1.0",
+  "uvicorn[standard]>=0.30",
+]
+
+[project.optional-dependencies]
+dev = [
+  "anyio>=4.0",
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["auth", "config", "logging_utils", "main"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["api", "models", "policies", "storage"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

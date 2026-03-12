@@ -1,0 +1,139 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: higress-config
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: higress
+data:
+  gateway.yaml: |
+    clusterName: "clawcluster-dev"
+    domain: "clawcluster.example.com"
+    listeners:
+      http: 8080
+      https: 8443
+      admin: 9000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: higress
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: higress
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/component: higress
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: https
+      port: 8443
+      targetPort: https
+    - name: admin
+      port: 9000
+      targetPort: admin
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: higress-external
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: higress
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/component: higress
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+    - name: https
+      port: 443
+      targetPort: https
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: higress
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: higress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: clawcluster
+      app.kubernetes.io/component: higress
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: kustomize
+        app.kubernetes.io/instance: clawcluster
+        app.kubernetes.io/part-of: clawcluster
+        app.kubernetes.io/component: higress
+    spec:
+      containers:
+        - name: higress
+          image: higress-registry.cn-hangzhou.cr.aliyuncs.com/higress-cloud/all-in-one:1.4.3-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: https
+              containerPort: 8443
+            - name: admin
+              containerPort: 9000
+          env:
+            - name: DOMAIN
+              value: clawcluster.example.com
+            - name: CLUSTER_NAME
+              value: clawcluster-dev
+            - name: HIGRESS_BOOTSTRAP_CONFIG
+              value: /etc/clawcluster/higress/gateway.yaml
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/clawcluster/higress/gateway.yaml
+              subPath: gateway.yaml
+            - name: data
+              mountPath: /var/lib/higress
+          livenessProbe:
+            httpGet:
+              path: /
+              port: admin
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: admin
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: higress-config
+        - name: data
+          emptyDir: {}

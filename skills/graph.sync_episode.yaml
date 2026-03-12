@@ -1,0 +1,33 @@
+# ClawCluster skill manifest for syncing task-derived knowledge back into Graphiti.
+apiVersion: clawcluster/v1
+kind: Skill
+metadata:
+  name: graph.sync_episode
+  version: 1.0.0
+spec:
+  category: graph
+  runtimeClass: worker-container
+  description: Sync a knowledge episode or fact update into Graphiti from task output, preserving source provenance and refreshing referenced entities for future retrieval.
+  inputs:
+    - work_item_id: string # Work item or task-run identifier that produced the knowledge worth syncing.
+    - episode_content: markdown # Canonical fact or narrative episode content, including the relevant temporal framing.
+    - entity_refs: array[object] # Entities mentioned in the episode with preferred labels, aliases, and optional existing graph ids.
+    - source_uri: uri # Durable URI pointing to the originating artifact, document, run log, or repository change.
+  outputs:
+    - episode_id: string # Graphiti episode identifier assigned to the synced knowledge record.
+    - entities_created: array[string] # Newly created entity ids introduced during the sync operation.
+    - entities_updated: array[string] # Existing entity ids that were enriched, merged, or relinked.
+  tools:
+    - graphiti.api
+  mcpServices:
+    - graphiti
+  guardrails:
+    approvalClass: low
+    maxDurationSec: 60
+    maxCostUsd: 0.20
+    requiresValidation: [] # Sync is bounded and auditable; no extra automated validation is required.
+  publishes:
+    - graphiti.episode
+  retryPolicy:
+    maxAttempts: 2
+    backoffSeconds: 10

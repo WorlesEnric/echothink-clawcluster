@@ -1,0 +1,435 @@
+global:
+  domain: clawcluster.example.com
+  namespace: clawcluster
+  storageClass: standard
+  imagePullPolicy: IfNotPresent
+  clusterName: clawcluster-dev
+  ingressClassName: nginx
+  caMountPath: /etc/clawcluster/ca/ca.pem
+
+externalServices:
+  minio:
+    endpoint: https://minio.echothink.internal
+    bucket: clawcluster-sharedfs
+    region: us-east-1
+    existingSecret: clawcluster-upstream
+    accessKeyKey: minio-access-key
+    secretKeyKey: minio-secret-key
+  outline:
+    url: https://outline.echothink.internal
+  gitlab:
+    url: https://gitlab.echothink.internal
+  supabase:
+    url: https://supabase.echothink.internal
+  hatchet:
+    url: https://hatchet.echothink.internal
+  graphiti:
+    url: https://graphiti.echothink.internal
+  litellm:
+    url: https://litellm.echothink.internal
+  langfuse:
+    url: https://langfuse.echothink.internal
+  dify:
+    url: https://dify.echothink.internal
+  n8n:
+    url: https://n8n.echothink.internal
+
+security:
+  existingSecret: clawcluster-runtime
+  workerJwtSecretKey: worker-jwt-secret
+  caSecretName: clawcluster-runtime
+  caSecretKey: ca.pem
+  vpnPeerEndpoint: vpn-peer.clawcluster.example.com:51820
+
+higress:
+  image: higress-registry.cn-hangzhou.cr.aliyuncs.com/higress-cloud/all-in-one:1.4.3-alpine
+  replicas: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  storage:
+    enabled: false
+    existingClaim: ""
+    size: 10Gi
+    accessMode: ReadWriteOnce
+  service:
+    httpPort: 8080
+    httpsPort: 8443
+    adminPort: 9000
+    external:
+      enabled: false
+      type: LoadBalancer
+      annotations: {}
+  config:
+    clusterName: clawcluster-dev
+    domain: clawcluster.example.com
+  affinity: {}
+  nodeSelector: {}
+  tolerations: []
+
+tuwunel:
+  image: ghcr.io/girlbossceo/tuwunel:latest
+  replicas: 1
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+  storage:
+    size: 20Gi
+    accessMode: ReadWriteOnce
+  service:
+    port: 6167
+  config:
+    serverName: matrix.clawcluster.example.com
+    logLevel: info
+  existingSecret: clawcluster-tuwunel
+  secretKeys:
+    registrationToken: registration-token
+    dbUrl: db-url
+  affinity: {}
+  nodeSelector: {}
+  tolerations: []
+
+elementWeb:
+  image: vectorim/element-web:latest
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  service:
+    port: 80
+  config:
+    brand: EchoThink ClawCluster
+    defaultTheme: dark
+    disableGuests: true
+    disableCustomUrls: true
+    defaultServer: https://matrix.clawcluster.example.com
+    serverName: matrix.clawcluster.example.com
+  affinity: {}
+  nodeSelector: {}
+  tolerations: []
+
+hiclawManager:
+  image: ghcr.io/opencoai/openclaw:latest
+  replicas: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  service:
+    port: 8088
+  workspace:
+    existingClaim: ""
+    size: 20Gi
+    accessMode: ReadWriteMany
+    mountPath: /var/lib/clawcluster
+  agentConfigMountPath: /workspace/agents
+  existingSecret: clawcluster-runtime
+  config:
+    logLevel: info
+    model: claude-opus-4-6
+    maxConcurrentTasks: 10
+  env:
+    OUTLINE_URL: https://outline.echothink.internal
+    GITLAB_URL: https://gitlab.echothink.internal
+    SUPABASE_URL: https://supabase.echothink.internal
+    HATCHET_SERVER_URL: https://hatchet.echothink.internal
+    GRAPHITI_URL: https://graphiti.echothink.internal
+    LITELLM_URL: https://litellm.echothink.internal
+    LANGFUSE_URL: https://langfuse.echothink.internal
+  secretEnv: {}
+  secretTemplate:
+    create: false
+    name: ""
+    type: Opaque
+    stringData: {}
+  affinity: {}
+  nodeSelector: {}
+  tolerations: []
+
+workers:
+  - name: planner-worker
+    image: ghcr.io/opencoai/openclaw:latest
+    replicas: 1
+    workerClass: planner
+    model: claude-sonnet-4-6
+    description: Breaks goals into executable plans and acceptance criteria.
+    existingSecret: clawcluster-workers
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    env:
+      OUTLINE_URL: https://outline.echothink.internal
+      GRAPHITI_URL: https://graphiti.echothink.internal
+      HATCHET_SERVER_URL: https://hatchet.echothink.internal
+    secretEnv: {}
+    affinity: {}
+    nodeSelector: {}
+    tolerations: []
+  - name: workflow-worker
+    image: ghcr.io/opencoai/openclaw:latest
+    replicas: 1
+    workerClass: workflow
+    model: claude-sonnet-4-6
+    description: Automates workflows, orchestrators, and delivery pipelines.
+    existingSecret: clawcluster-workers
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    env:
+      HATCHET_SERVER_URL: https://hatchet.echothink.internal
+      DIFY_URL: https://dify.echothink.internal
+      N8N_URL: https://n8n.echothink.internal
+    secretEnv: {}
+    affinity: {}
+    nodeSelector: {}
+    tolerations: []
+  - name: coding-worker
+    image: ghcr.io/opencoai/openclaw:latest
+    replicas: 1
+    workerClass: coding
+    model: claude-sonnet-4-6
+    description: Implements code changes and prepares technical artifacts.
+    existingSecret: clawcluster-workers
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    env:
+      GITLAB_URL: https://gitlab.echothink.internal
+      SUPABASE_URL: https://supabase.echothink.internal
+    secretEnv:
+      GITLAB_TOKEN:
+        key: gitlab-token
+      SUPABASE_SERVICE_KEY:
+        key: supabase-service-key
+    affinity: {}
+    nodeSelector: {}
+    tolerations: []
+  - name: qa-worker
+    image: ghcr.io/opencoai/openclaw:latest
+    replicas: 1
+    workerClass: qa
+    model: claude-sonnet-4-6
+    description: Verifies outputs and produces evidence-backed quality reports.
+    existingSecret: clawcluster-workers
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    env:
+      HATCHET_SERVER_URL: https://hatchet.echothink.internal
+      LANGFUSE_URL: https://langfuse.echothink.internal
+    secretEnv:
+      LANGFUSE_SECRET_KEY:
+        key: langfuse-secret-key
+    affinity: {}
+    nodeSelector: {}
+    tolerations: []
+  - name: knowledge-worker
+    image: ghcr.io/opencoai/openclaw:latest
+    replicas: 1
+    workerClass: knowledge
+    model: claude-sonnet-4-6
+    description: Curates durable knowledge and long-lived operational memory.
+    existingSecret: clawcluster-workers
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    env:
+      OUTLINE_URL: https://outline.echothink.internal
+      GRAPHITI_URL: https://graphiti.echothink.internal
+      LITELLM_URL: https://litellm.echothink.internal
+    secretEnv:
+      OUTLINE_API_TOKEN:
+        key: outline-api-token
+      LITELLM_API_KEY:
+        key: litellm-api-key
+    affinity: {}
+    nodeSelector: {}
+    tolerations: []
+
+intakeBridge:
+  image: clawcluster/intake-bridge:latest
+  replicas: 1
+  existingSecret: clawcluster-bridges
+  service:
+    port: 8100
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  env:
+    OUTLINE_URL: https://outline.echothink.internal
+    GITLAB_URL: https://gitlab.echothink.internal
+    SUPABASE_URL: https://supabase.echothink.internal
+    DIFY_URL: https://dify.echothink.internal
+    N8N_URL: https://n8n.echothink.internal
+  secretEnv:
+    OUTLINE_API_TOKEN:
+      key: outline-api-token
+    GITLAB_TOKEN:
+      key: gitlab-token
+    SUPABASE_ANON_KEY:
+      key: supabase-anon-key
+    DIFY_API_KEY:
+      key: dify-api-key
+    N8N_API_KEY:
+      key: n8n-api-key
+  affinity: {}
+  nodeSelector: {}
+  tolerations: []
+
+publisherBridge:
+  image: clawcluster/publisher-bridge:latest
+  replicas: 1
+  existingSecret: clawcluster-bridges
+  service:
+    port: 8101
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  env:
+    OUTLINE_URL: https://outline.echothink.internal
+    GITLAB_URL: https://gitlab.echothink.internal
+    SUPABASE_URL: https://supabase.echothink.internal
+  secretEnv:
+    OUTLINE_API_TOKEN:
+      key: outline-api-token
+    GITLAB_TOKEN:
+      key: gitlab-token
+    SUPABASE_SERVICE_KEY:
+      key: supabase-service-key
+  affinity: {}
+  nodeSelector: {}
+  tolerations: []
+
+policyBridge:
+  image: clawcluster/policy-bridge:latest
+  replicas: 1
+  existingSecret: clawcluster-bridges
+  service:
+    port: 8102
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  env:
+    GITLAB_URL: https://gitlab.echothink.internal
+    SUPABASE_URL: https://supabase.echothink.internal
+  secretEnv:
+    GITLAB_TOKEN:
+      key: gitlab-token
+    SUPABASE_SERVICE_KEY:
+      key: supabase-service-key
+  affinity: {}
+  nodeSelector: {}
+  tolerations: []
+
+observabilityBridge:
+  image: clawcluster/observability-bridge:latest
+  replicas: 1
+  existingSecret: clawcluster-bridges
+  service:
+    port: 8103
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  env:
+    LANGFUSE_URL: https://langfuse.echothink.internal
+    GRAPHITI_URL: https://graphiti.echothink.internal
+    LITELLM_URL: https://litellm.echothink.internal
+    HATCHET_SERVER_URL: https://hatchet.echothink.internal
+  secretEnv:
+    LANGFUSE_SECRET_KEY:
+      key: langfuse-secret-key
+    LITELLM_API_KEY:
+      key: litellm-api-key
+  affinity: {}
+  nodeSelector: {}
+  tolerations: []
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 64m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+  tls:
+    enabled: false
+    secretName: clawcluster-tls
+    clusterIssuer: ""
+  hosts:
+    gateway: gateway.clawcluster.example.com
+    matrix: matrix.clawcluster.example.com
+    element: element.clawcluster.example.com
+    manager: manager.clawcluster.example.com
+    intake: intake.clawcluster.example.com
+    publisher: publisher.clawcluster.example.com
+    policy: policy.clawcluster.example.com
+    observability: observability.clawcluster.example.com
+
+networkPolicy:
+  enabled: true
+  internalPorts:
+    - 80
+    - 8080
+    - 8443
+    - 9000
+    - 6167
+    - 8088
+    - 8100
+    - 8101
+    - 8102
+    - 8103
+  minioCIDR: 10.0.0.0/24
+  minioPorts:
+    - 9000
+    - 443

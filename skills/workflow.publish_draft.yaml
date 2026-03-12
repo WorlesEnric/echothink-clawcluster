@@ -1,0 +1,39 @@
+# ClawCluster skill manifest for publishing approved workflow drafts.
+apiVersion: clawcluster/v1
+kind: Skill
+metadata:
+  name: workflow.publish_draft
+  version: 1.0.0
+spec:
+  category: workflow
+  runtimeClass: worker-container
+  description: Publish a previously approved workflow draft artifact into Dify or n8n and optionally activate it immediately after import once approval-gate validation has passed.
+  inputs:
+    - draft_artifact_uri: uri # Durable artifact-store URI for the previously generated workflow draft payload.
+    - target_system: enum[dify|n8n] # Destination workflow platform that should receive the approved draft.
+    - draft_name: string # Human-readable workflow name to assign in the target platform at publish time.
+    - activate_on_publish: boolean # When true, request activation immediately after a successful publish; otherwise leave the workflow inactive.
+  outputs:
+    - published_id: string # Platform-native workflow identifier returned by Dify or n8n after import.
+    - published_url: uri # Direct URL to the published workflow in the target platform user interface.
+    - activation_status: object # Activation outcome including requested state, final state, warnings, and any manual follow-up steps.
+  tools:
+    - dify.api
+    - n8n.api
+    - minio.s3
+  mcpServices:
+    - dify
+    - n8n
+    - minio
+  guardrails:
+    approvalClass: high
+    maxDurationSec: 120
+    maxCostUsd: 0.10
+    requiresValidation:
+      - approval_gate
+  publishes:
+    - dify.workflow
+    - n8n.workflow
+  retryPolicy:
+    maxAttempts: 1
+    backoffSeconds: 0

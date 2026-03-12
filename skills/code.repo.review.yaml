@@ -1,0 +1,37 @@
+# ClawCluster skill manifest for structured GitLab merge-request reviews.
+apiVersion: clawcluster/v1
+kind: Skill
+metadata:
+  name: code.repo.review
+  version: 1.0.0
+spec:
+  category: code
+  runtimeClass: worker-container
+  description: Review a GitLab merge request against code quality, change risk, and optional custom criteria, producing a structured review with inline comment suggestions and blocking issues.
+  inputs:
+    - gitlab_project_id: string # GitLab project id or full path containing the merge request under review.
+    - mr_iid: integer # Internal merge request IID within the target project.
+    - review_criteria: array[string] # Optional custom review criteria such as security, performance, migration safety, or test adequacy.
+  outputs:
+    - review_summary: markdown # Consolidated review narrative describing overall quality, notable strengths, and major concerns.
+    - inline_comments: array[object] # File- and line-level comment suggestions with severity, rationale, and suggested fix text.
+    - approval_recommendation: object # Suggested disposition such as approve, comment, or request changes, with confidence and justification.
+    - blocking_issues: array[object] # Material issues that must be resolved before merge, each with evidence and impact.
+  tools:
+    - gitlab.api
+    - higress.llm
+    - graphiti.search
+  mcpServices:
+    - gitlab
+    - higress
+    - graphiti
+  guardrails:
+    approvalClass: low
+    maxDurationSec: 900
+    maxCostUsd: 2.0
+    requiresValidation:
+      - reviewer_agent
+  publishes: [] # Review artifacts are returned to the caller rather than posted automatically.
+  retryPolicy:
+    maxAttempts: 2
+    backoffSeconds: 20

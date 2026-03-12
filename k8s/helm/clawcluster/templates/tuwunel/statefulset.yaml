@@ -1,0 +1,93 @@
+{{- $fullname := include "clawcluster.fullname" . -}}
+{{- $namespace := include "clawcluster.namespace" . -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullname }}-tuwunel
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "tuwunel") | nindent 4 }}
+spec:
+  serviceName: {{ $fullname }}-tuwunel
+  replicas: {{ .Values.tuwunel.replicas }}
+  selector:
+    matchLabels:
+      {{- include "clawcluster.componentSelectorLabels" (dict "ctx" . "component" "tuwunel") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "tuwunel") | nindent 8 }}
+    spec:
+      {{- with .Values.tuwunel.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tuwunel.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tuwunel.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: tuwunel
+          {{- include "clawcluster.image" (dict "image" .Values.tuwunel.image "policy" .Values.global.imagePullPolicy) | nindent 10 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.tuwunel.service.port }}
+          env:
+            - name: TUWUNEL_SERVER_NAME
+              value: {{ .Values.tuwunel.config.serverName | quote }}
+            - name: TUWUNEL_LOG_LEVEL
+              value: {{ .Values.tuwunel.config.logLevel | quote }}
+            - name: TUWUNEL_REGISTRATION_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.tuwunel.existingSecret }}
+                  key: {{ .Values.tuwunel.secretKeys.registrationToken }}
+            - name: TUWUNEL_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.tuwunel.existingSecret }}
+                  key: {{ .Values.tuwunel.secretKeys.dbUrl }}
+            - name: TUWUNEL_CONFIG_FILE
+              value: /etc/tuwunel/homeserver.yaml
+          resources:
+            {{- toYaml .Values.tuwunel.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/tuwunel/homeserver.yaml
+              subPath: homeserver.yaml
+            - name: data
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /_matrix/client/versions
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /_matrix/client/versions
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $fullname }}-tuwunel
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "tuwunel") | nindent 10 }}
+      spec:
+        accessModes:
+          - {{ .Values.tuwunel.storage.accessMode }}
+        resources:
+          requests:
+            storage: {{ .Values.tuwunel.storage.size }}
+        {{- include "clawcluster.storageClass" . | nindent 8 }}

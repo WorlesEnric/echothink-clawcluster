@@ -1,0 +1,38 @@
+# ClawCluster skill manifest for applying review-driven code fixes to an existing branch.
+apiVersion: clawcluster/v1
+kind: Skill
+metadata:
+  name: code.repo.fix_from_review
+  version: 1.0.0
+spec:
+  category: code
+  runtimeClass: manager-cli
+  description: Apply targeted fixes to a GitLab branch using review feedback and the original acceptance criteria, then summarize what changed and what remains unresolved.
+  inputs:
+    - work_item: object # Structured change request context describing the branch's original objective, scope boundaries, and linked references.
+    - branch_ref: string # Existing branch name that should receive the review-driven fixes.
+    - review_comments: array[object] # Reviewer feedback items, ideally including file hints, severity, rationale, and requested changes.
+    - original_acceptance_criteria: array[string] # Baseline completion criteria that must remain satisfied after the fixes are applied.
+  outputs:
+    - patch_summary: markdown # Summary of the fixes applied, touched areas, and any review items intentionally deferred.
+    - updated_branch_ref: string # Branch name updated with the fix commit or commits; usually unchanged unless a recovery branch was created.
+    - fix_notes: markdown # Notes explaining how each review theme was addressed, partially addressed, or left unresolved.
+  tools:
+    - gitlab.api
+    - higress.llm
+    - higress.mcp.gitlab
+    - coding.cli
+  mcpServices:
+    - gitlab
+    - higress
+  guardrails:
+    approvalClass: medium
+    maxDurationSec: 3600
+    maxCostUsd: 4.0
+    requiresValidation:
+      - tests
+  publishes:
+    - gitlab.branch
+  retryPolicy:
+    maxAttempts: 1
+    backoffSeconds: 0

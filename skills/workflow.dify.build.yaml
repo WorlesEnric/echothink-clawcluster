@@ -1,0 +1,37 @@
+# ClawCluster skill manifest for drafting Dify workflows from specifications.
+apiVersion: clawcluster/v1
+kind: Skill
+metadata:
+  name: workflow.dify.build
+  version: 1.0.0
+spec:
+  category: workflow
+  runtimeClass: worker-container
+  description: Draft a Dify workflow definition from a structured specification, use the Outline brief as canonical context, and validate the result with syntax and sample-execution checks.
+  inputs:
+    - workflow_spec: object # Structured workflow specification covering business goal, nodes, data flow, prompts, integrations, and success criteria.
+    - sample_inputs: array[object] # Optional representative inputs and expected behaviors used during dry-run validation.
+    - outline_brief_doc_id: string # Outline document id for the canonical brief, process description, or product context that grounds the workflow.
+  outputs:
+    - dify_workflow_json: json # Import-ready Dify workflow JSON with nodes, edges, variables, prompts, and tool configuration.
+    - workflow_summary: markdown # Human-readable summary of the designed workflow, assumptions, and known gaps before publication.
+    - test_report: object # Results of syntax validation and sample execution, including pass or fail outcomes and remediation notes.
+  tools:
+    - dify.api
+    - outline.api
+    - higress.llm
+  mcpServices:
+    - dify
+    - outline
+    - higress
+  guardrails:
+    approvalClass: medium
+    maxDurationSec: 600
+    maxCostUsd: 3.0
+    requiresValidation:
+      - workflow_syntax_check
+      - sample_execution
+  publishes: [] # The workflow draft is returned for human review rather than published automatically.
+  retryPolicy:
+    maxAttempts: 2
+    backoffSeconds: 30

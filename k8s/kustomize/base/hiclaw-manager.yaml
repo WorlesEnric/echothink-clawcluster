@@ -1,0 +1,255 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hiclaw-manager-config
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: hiclaw-manager
+data:
+  manager.yaml: |
+    name: manager
+    role: manager
+    model: "claude-opus-4-6"
+    clusterName: "clawcluster-dev"
+    workspace: "/var/lib/clawcluster"
+    matrixBaseUrl: "http://tuwunel:6167"
+    gatewayBaseUrl: "http://higress:8080"
+    workers:
+      - name: "planner-worker"
+        role: "planner"
+        service: "planner-worker"
+        configPath: "/workspace/agents/planner-worker/openclaw.yaml"
+      - name: "workflow-worker"
+        role: "workflow"
+        service: "workflow-worker"
+        configPath: "/workspace/agents/workflow-worker/openclaw.yaml"
+      - name: "coding-worker"
+        role: "coding"
+        service: "coding-worker"
+        configPath: "/workspace/agents/coding-worker/openclaw.yaml"
+      - name: "qa-worker"
+        role: "qa"
+        service: "qa-worker"
+        configPath: "/workspace/agents/qa-worker/openclaw.yaml"
+      - name: "knowledge-worker"
+        role: "knowledge"
+        service: "knowledge-worker"
+        configPath: "/workspace/agents/knowledge-worker/openclaw.yaml"
+  planner-worker.yaml: |
+    name: "planner-worker"
+    role: "planner"
+    model: "claude-sonnet-4-6"
+    description: "Breaks goals into executable plans and acceptance criteria."
+    managerUrl: "http://hiclaw-manager:8088"
+    gatewayUrl: "http://higress:8080"
+    matrixUrl: "http://tuwunel:6167"
+  workflow-worker.yaml: |
+    name: "workflow-worker"
+    role: "workflow"
+    model: "claude-sonnet-4-6"
+    description: "Automates workflows, orchestrators, and delivery pipelines."
+    managerUrl: "http://hiclaw-manager:8088"
+    gatewayUrl: "http://higress:8080"
+    matrixUrl: "http://tuwunel:6167"
+  coding-worker.yaml: |
+    name: "coding-worker"
+    role: "coding"
+    model: "claude-sonnet-4-6"
+    description: "Implements code changes and prepares technical artifacts."
+    managerUrl: "http://hiclaw-manager:8088"
+    gatewayUrl: "http://higress:8080"
+    matrixUrl: "http://tuwunel:6167"
+  qa-worker.yaml: |
+    name: "qa-worker"
+    role: "qa"
+    model: "claude-sonnet-4-6"
+    description: "Verifies outputs and produces evidence-backed quality reports."
+    managerUrl: "http://hiclaw-manager:8088"
+    gatewayUrl: "http://higress:8080"
+    matrixUrl: "http://tuwunel:6167"
+  knowledge-worker.yaml: |
+    name: "knowledge-worker"
+    role: "knowledge"
+    model: "claude-sonnet-4-6"
+    description: "Curates durable knowledge and long-lived operational memory."
+    managerUrl: "http://hiclaw-manager:8088"
+    gatewayUrl: "http://higress:8080"
+    matrixUrl: "http://tuwunel:6167"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hiclaw-manager-workspace
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: hiclaw-manager
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hiclaw-manager
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: hiclaw-manager
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/component: hiclaw-manager
+  ports:
+    - name: http
+      port: 8088
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hiclaw-manager
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: hiclaw-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: clawcluster
+      app.kubernetes.io/component: hiclaw-manager
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: kustomize
+        app.kubernetes.io/instance: clawcluster
+        app.kubernetes.io/part-of: clawcluster
+        app.kubernetes.io/component: hiclaw-manager
+    spec:
+      containers:
+        - name: hiclaw-manager
+          image: ghcr.io/opencoai/openclaw:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8088
+          env:
+            - name: PORT
+              value: "8088"
+            - name: HICLAW_MANAGER_PORT
+              value: "8088"
+            - name: HICLAW_MANAGER_LOG_LEVEL
+              value: info
+            - name: OPENCLAW_NODE_ROLE
+              value: manager
+            - name: OPENCLAW_CLUSTER_NAME
+              value: clawcluster-dev
+            - name: OPENCLAW_DOMAIN
+              value: clawcluster.example.com
+            - name: OPENCLAW_PUBLIC_URL
+              value: http://hiclaw-manager:8088
+            - name: OPENCLAW_SHARED_STORAGE_PROVIDER
+              value: minio
+            - name: OPENCLAW_SHARED_STORAGE_ENDPOINT
+              value: https://minio.echothink.internal
+            - name: OPENCLAW_SHARED_STORAGE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-upstream
+                  key: minio-access-key
+            - name: OPENCLAW_SHARED_STORAGE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-upstream
+                  key: minio-secret-key
+            - name: OPENCLAW_SHARED_STORAGE_BUCKET
+              value: clawcluster-sharedfs
+            - name: OUTLINE_URL
+              value: https://outline.echothink.internal
+            - name: GITLAB_URL
+              value: https://gitlab.echothink.internal
+            - name: SUPABASE_URL
+              value: https://supabase.echothink.internal
+            - name: HATCHET_SERVER_URL
+              value: https://hatchet.echothink.internal
+            - name: GRAPHITI_URL
+              value: https://graphiti.echothink.internal
+            - name: LITELLM_URL
+              value: https://litellm.echothink.internal
+            - name: LANGFUSE_URL
+              value: https://langfuse.echothink.internal
+            - name: VPN_PEER_ENDPOINT
+              value: vpn-peer.clawcluster.example.com:51820
+            - name: MTLS_CA_CERT_PATH
+              value: /etc/clawcluster/ca/ca.pem
+            - name: WORKER_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-runtime
+                  key: worker-jwt-secret
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: workspace
+              mountPath: /var/lib/clawcluster
+            - name: agent-configs
+              mountPath: /workspace/agents
+            - name: ca-cert
+              mountPath: /etc/clawcluster/ca
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 5
+      volumes:
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: hiclaw-manager-workspace
+        - name: agent-configs
+          configMap:
+            name: hiclaw-manager-config
+            items:
+              - key: manager.yaml
+                path: manager/openclaw.yaml
+              - key: planner-worker.yaml
+                path: planner-worker/openclaw.yaml
+              - key: workflow-worker.yaml
+                path: workflow-worker/openclaw.yaml
+              - key: coding-worker.yaml
+                path: coding-worker/openclaw.yaml
+              - key: qa-worker.yaml
+                path: qa-worker/openclaw.yaml
+              - key: knowledge-worker.yaml
+                path: knowledge-worker/openclaw.yaml
+        - name: ca-cert
+          secret:
+            secretName: clawcluster-runtime
+            items:
+              - key: ca.pem
+                path: ca.pem

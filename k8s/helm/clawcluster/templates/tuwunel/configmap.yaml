@@ -1,0 +1,16 @@
+{{- $fullname := include "clawcluster.fullname" . -}}
+{{- $namespace := include "clawcluster.namespace" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-tuwunel
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "tuwunel") | nindent 4 }}
+data:
+  homeserver.yaml: |
+    serverName: {{ .Values.tuwunel.config.serverName | quote }}
+    logLevel: {{ .Values.tuwunel.config.logLevel | quote }}
+    listeners:
+      - port: {{ .Values.tuwunel.service.port }}
+        type: http

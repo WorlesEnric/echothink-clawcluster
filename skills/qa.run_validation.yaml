@@ -1,0 +1,38 @@
+# ClawCluster skill manifest for pre-approval validation runs.
+apiVersion: clawcluster/v1
+kind: Skill
+metadata:
+  name: qa.run_validation
+  version: 1.0.0
+spec:
+  category: qa
+  runtimeClass: worker-container
+  description: Run validation checks on task outputs before approval by inspecting repository state, object-store artifacts, and acceptance criteria, then recommend whether the result is ready to proceed.
+  inputs:
+    - work_item_id: string # Work item or task-run identifier whose outputs are being validated.
+    - artifact_uris: array[uri] # Artifact URIs to fetch from MinIO or linked systems for validation.
+    - validation_types: array[string] # Requested validation checks such as tests, schema_check, sample_execution, approval_gate, or reviewer_agent.
+    - acceptance_criteria: array[string] # Human-authored completion criteria used to judge pass or fail and identify remaining gaps.
+  outputs:
+    - validation_report: markdown # End-to-end validation summary with evidence, scoring, and disposition rationale.
+    - passed_checks: array[object] # Checks that passed, with evidence locations, confidence, and relevant metrics.
+    - failed_checks: array[object] # Checks that failed, including observed symptoms, impact, and recommended remediation.
+    - blocking_issues: array[object] # Issues severe enough to stop approval, merge, or publication.
+    - recommendation: object # Final recommendation such as approve, rework, or escalate, with confidence and next-step guidance.
+  tools:
+    - gitlab.api
+    - minio.s3
+    - higress.llm
+  mcpServices:
+    - gitlab
+    - minio
+    - higress
+  guardrails:
+    approvalClass: none
+    maxDurationSec: 1800
+    maxCostUsd: 1.50
+    requiresValidation: [] # This skill performs validation and therefore does not require an additional validation pass itself.
+  publishes: [] # Validation findings are returned to the supervisor or calling workflow.
+  retryPolicy:
+    maxAttempts: 2
+    backoffSeconds: 45

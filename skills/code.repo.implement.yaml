@@ -1,0 +1,51 @@
+# ClawCluster skill manifest for bounded GitLab implementation runs.
+apiVersion: clawcluster/v1
+kind: Skill
+metadata:
+  name: code.repo.implement
+  version: 1.0.0
+spec:
+  category: code
+  runtimeClass: manager-cli
+  description: Implement a bounded code change in a GitLab repository by delegating execution to the manager-hosted coding CLI, then summarize the resulting patch, test evidence, and reviewer notes.
+  inputs:
+    - work_item: object # Structured change request containing the objective, scope limits, linked context, and non-functional constraints.
+    - repo_ref: string # GitLab project path, numeric project id, or repository URI to clone and modify.
+    - base_branch: string # Existing branch name to branch from before applying the bounded change.
+    - acceptance_criteria: array[string] # Verifiable completion criteria that the coding workflow must satisfy before handoff.
+    - max_cost_usd: number # Per-run spending ceiling passed down to the delegated coding workflow.
+    - max_duration_sec: integer # Hard runtime budget for the delegated coding workflow, including implementation, tests, and summarization.
+  outputs:
+    - patch_summary: markdown # High-level explanation of changed files, implementation approach, and any deviations from the requested plan.
+    - branch_ref: string # GitLab branch name containing the generated commit or commits for review.
+    - commit_sha: string # Head commit SHA produced by the implementation run.
+    - test_report: object # Summary of executed tests, exit codes, and any failures, skips, or notable warnings.
+    - review_notes: markdown # Reviewer-oriented notes covering tradeoffs, risks, follow-up recommendations, and validation context.
+  tools:
+    - matrix.room
+    - gitlab.api
+    - outline.read
+    - graphiti.search
+    - higress.llm
+    - higress.mcp.gitlab
+    - coding.cli
+  mcpServices:
+    - matrix
+    - gitlab
+    - outline
+    - graphiti
+    - higress
+  guardrails:
+    approvalClass: medium
+    maxDurationSec: 5400
+    maxCostUsd: 6.0
+    requiresValidation:
+      - tests
+      - reviewer_agent
+  publishes:
+    - gitlab.branch
+    - gitlab.merge_request
+    - outline.summary
+  retryPolicy:
+    maxAttempts: 1
+    backoffSeconds: 0

@@ -1,0 +1,26 @@
+{{- $fullname := include "clawcluster.fullname" . -}}
+{{- $namespace := include "clawcluster.namespace" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-element-web
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "element-web") | nindent 4 }}
+data:
+  config.json: |
+    {
+      "default_server_config": {
+        "m.homeserver": {
+          "base_url": {{ .Values.elementWeb.config.defaultServer | quote }},
+          "server_name": {{ .Values.elementWeb.config.serverName | quote }}
+        }
+      },
+      "disable_guests": {{ ternary "true" "false" .Values.elementWeb.config.disableGuests }},
+      "disable_custom_urls": {{ ternary "true" "false" .Values.elementWeb.config.disableCustomUrls }},
+      "brand": {{ .Values.elementWeb.config.brand | quote }},
+      "default_theme": {{ .Values.elementWeb.config.defaultTheme | quote }},
+      "room_directory": {
+        "servers": [{{ .Values.elementWeb.config.serverName | quote }}]
+      }
+    }

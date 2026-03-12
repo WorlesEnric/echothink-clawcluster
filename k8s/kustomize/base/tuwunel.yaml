@@ -1,0 +1,130 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tuwunel-config
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: tuwunel
+data:
+  homeserver.yaml: |
+    serverName: "matrix.clawcluster.example.com"
+    logLevel: "info"
+    listeners:
+      - port: 6167
+        type: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tuwunel
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: tuwunel
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/component: tuwunel
+  ports:
+    - name: http
+      port: 6167
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tuwunel
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/instance: clawcluster
+    app.kubernetes.io/part-of: clawcluster
+    app.kubernetes.io/component: tuwunel
+spec:
+  serviceName: tuwunel
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: clawcluster
+      app.kubernetes.io/component: tuwunel
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: kustomize
+        app.kubernetes.io/instance: clawcluster
+        app.kubernetes.io/part-of: clawcluster
+        app.kubernetes.io/component: tuwunel
+    spec:
+      containers:
+        - name: tuwunel
+          image: ghcr.io/girlbossceo/tuwunel:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 6167
+          env:
+            - name: TUWUNEL_SERVER_NAME
+              value: matrix.clawcluster.example.com
+            - name: TUWUNEL_LOG_LEVEL
+              value: info
+            - name: TUWUNEL_REGISTRATION_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-tuwunel
+                  key: registration-token
+            - name: TUWUNEL_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: clawcluster-tuwunel
+                  key: db-url
+            - name: TUWUNEL_CONFIG_FILE
+              value: /etc/tuwunel/homeserver.yaml
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/tuwunel/homeserver.yaml
+              subPath: homeserver.yaml
+            - name: data
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /_matrix/client/versions
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /_matrix/client/versions
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: tuwunel-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/managed-by: kustomize
+          app.kubernetes.io/instance: clawcluster
+          app.kubernetes.io/part-of: clawcluster
+          app.kubernetes.io/component: tuwunel
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: standard
+        resources:
+          requests:
+            storage: 20Gi

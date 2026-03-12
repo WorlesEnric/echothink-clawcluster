@@ -1,0 +1,568 @@
+name: clawcluster
+
+# Shared service defaults keep operational behavior consistent across the stack.
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  init: true
+  networks:
+    - clawcluster_net
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+x-http-health: &http-health
+  interval: 30s
+  timeout: 10s
+  retries: 5
+  start_period: 30s
+
+x-worker-defaults: &worker-defaults
+  <<: *service-defaults
+  image: ${WORKER_IMAGE}
+  pull_policy: if_not_present
+  depends_on:
+    hiclaw-manager:
+      condition: service_healthy
+  environment: &worker-common-env
+    OPENCLAW_NODE_ROLE: worker
+    OPENCLAW_MANAGER_URL: http://hiclaw-manager:${HICLAW_MANAGER_PORT}
+    OPENCLAW_CLUSTER_NAME: ${CLUSTER_NAME}
+    OPENCLAW_DOMAIN: ${DOMAIN}
+    OPENCLAW_SHARED_STORAGE_PROVIDER: minio
+    OPENCLAW_SHARED_STORAGE_ENDPOINT: ${MINIO_ENDPOINT}
+    OPENCLAW_SHARED_STORAGE_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+    OPENCLAW_SHARED_STORAGE_SECRET_KEY: ${MINIO_SECRET_KEY}
+    OPENCLAW_SHARED_STORAGE_BUCKET: ${MINIO_HICLAW_BUCKET}
+    HICLAW_MANAGER_LOG_LEVEL: ${HICLAW_MANAGER_LOG_LEVEL}
+    WORKER_JWT_SECRET: ${WORKER_JWT_SECRET}
+    MTLS_CA_CERT_PATH: ${MTLS_CA_CERT_PATH}
+    VPN_PEER_ENDPOINT: ${VPN_PEER_ENDPOINT}
+  deploy:
+    replicas: ${WORKER_REPLICAS}
+  healthcheck:
+    test:
+      - CMD-SHELL
+      - >-
+        test -n "$$OPENCLAW_WORKER_CLASS"
+        && test -n "$$OPENCLAW_MANAGER_URL"
+        && test -d /var/lib/clawcluster
+        && test -n "$$WORKER_JWT_SECRET"
+    interval: 30s
+    timeout: 10s
+    retries: 5
+    start_period: 20s
+
+x-bridge-defaults: &bridge-defaults
+  <<: *service-defaults
+  depends_on:
+    hiclaw-manager:
+      condition: service_healthy
+  environment: &bridge-common-env
+    CLUSTER_NAME: ${CLUSTER_NAME}
+    DOMAIN: ${DOMAIN}
+    OPENCLAW_MANAGER_URL: http://hiclaw-manager:${HICLAW_MANAGER_PORT}
+    MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+    MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+    MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+    MINIO_HICLAW_BUCKET: ${MINIO_HICLAW_BUCKET}
+    MTLS_CA_CERT_PATH: ${MTLS_CA_CERT_PATH}
+    WORKER_JWT_SECRET: ${WORKER_JWT_SECRET}
+
+services:
+  # Higress is the API and policy-aware gateway in front of the control plane.
+  higress:
+    <<: *service-defaults
+    image: higress-registry.cn-hangzhou.cr.aliyuncs.com/higress-cloud/all-in-one:1.4.3-alpine
+    pull_policy: if_not_present
+    environment:
+      DOMAIN: ${DOMAIN}
+      CLUSTER_NAME: ${CLUSTER_NAME}
+    ports:
+      - "${HIGRESS_HTTP_PORT}:8080"
+      - "${HIGRESS_HTTPS_PORT}:8443"
+      - "${HIGRESS_ADMIN_PORT}:9000"
+    volumes:
+      - clawcluster_higress_data:/var/lib/higress
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          (wget -qO- http://127.0.0.1:9000/ >/dev/null 2>&1
+          || curl -fsS http://127.0.0.1:9000/ >/dev/null 2>&1
+          || busybox wget -qO- http://127.0.0.1:9000/ >/dev/null 2>&1)
+          || exit 1
+      <<: *http-health
+
+  # Matrix homeserver used for human-agent collaboration and notifications.
+  tuwunel:
+    <<: *service-defaults
+    image: ghcr.io/girlbossceo/tuwunel:latest
+    pull_policy: if_not_present
+    environment:
+      TUWUNEL_SERVER_NAME: ${TUWUNEL_SERVER_NAME}
+      TUWUNEL_REGISTRATION_TOKEN: ${TUWUNEL_REGISTRATION_TOKEN}
+      TUWUNEL_DB_URL: ${TUWUNEL_DB_URL}
+    ports:
+      - "127.0.0.1:6167:6167"
+    volumes:
+      - clawcluster_tuwunel_data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          (wget -qO- http://127.0.0.1:6167/_matrix/client/versions >/dev/null 2>&1
+          || curl -fsS http://127.0.0.1:6167/_matrix/client/versions >/dev/null 2>&1
+          || busybox wget -qO- http://127.0.0.1:6167/_matrix/client/versions >/dev/null 2>&1)
+          || exit 1
+      <<: *http-health
+
+  # Element Web provides the browser UI for Matrix-backed collaboration.
+  element-web:
+    <<: *service-defaults
+    image: vectorim/element-web:latest
+    pull_policy: if_not_present
+    depends_on:
+      tuwunel:
+        condition: service_healthy
+    environment:
+      ELEMENT_WEB_DEFAULT_SERVER: ${ELEMENT_WEB_DEFAULT_SERVER}
+      TUWUNEL_SERVER_NAME: ${TUWUNEL_SERVER_NAME}
+    ports:
+      - "127.0.0.1:8081:80"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        cat >/app/config.json <<EOF
+        {
+          "default_server_config": {
+            "m.homeserver": {
+              "base_url": "${ELEMENT_WEB_DEFAULT_SERVER}",
+              "server_name": "${TUWUNEL_SERVER_NAME}"
+            }
+          },
+          "disable_guests": true,
+          "disable_custom_urls": true,
+          "brand": "EchoThink ClawCluster",
+          "default_theme": "dark",
+          "room_directory": {
+            "servers": ["${TUWUNEL_SERVER_NAME}"]
+          }
+        }
+        EOF
+        exec nginx -g 'daemon off;'
+    volumes:
+      - clawcluster_element_web_data:/app/cache
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          (wget -qO- http://127.0.0.1/ >/dev/null 2>&1
+          || curl -fsS http://127.0.0.1/ >/dev/null 2>&1
+          || busybox wget -qO- http://127.0.0.1/ >/dev/null 2>&1)
+          || exit 1
+      <<: *http-health
+
+  # HiClaw manager coordinates work queues, workers, and shared state.
+  hiclaw-manager:
+    <<: *service-defaults
+    image: ${WORKER_IMAGE}
+    pull_policy: if_not_present
+    environment:
+      PORT: ${HICLAW_MANAGER_PORT}
+      HICLAW_MANAGER_PORT: ${HICLAW_MANAGER_PORT}
+      HICLAW_MANAGER_LOG_LEVEL: ${HICLAW_MANAGER_LOG_LEVEL}
+      OPENCLAW_NODE_ROLE: manager
+      OPENCLAW_CLUSTER_NAME: ${CLUSTER_NAME}
+      OPENCLAW_DOMAIN: ${DOMAIN}
+      OPENCLAW_PUBLIC_URL: http://hiclaw-manager:${HICLAW_MANAGER_PORT}
+      OPENCLAW_SHARED_STORAGE_PROVIDER: minio
+      OPENCLAW_SHARED_STORAGE_ENDPOINT: ${MINIO_ENDPOINT}
+      OPENCLAW_SHARED_STORAGE_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      OPENCLAW_SHARED_STORAGE_SECRET_KEY: ${MINIO_SECRET_KEY}
+      OPENCLAW_SHARED_STORAGE_BUCKET: ${MINIO_HICLAW_BUCKET}
+      OUTLINE_URL: ${OUTLINE_URL}
+      GITLAB_URL: ${GITLAB_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      HATCHET_SERVER_URL: ${HATCHET_SERVER_URL}
+      GRAPHITI_URL: ${GRAPHITI_URL}
+      LITELLM_URL: ${LITELLM_URL}
+      LANGFUSE_URL: ${LANGFUSE_URL}
+      VPN_PEER_ENDPOINT: ${VPN_PEER_ENDPOINT}
+      MTLS_CA_CERT_PATH: ${MTLS_CA_CERT_PATH}
+      WORKER_JWT_SECRET: ${WORKER_JWT_SECRET}
+    ports:
+      - "${HICLAW_MANAGER_PORT}:${HICLAW_MANAGER_PORT}"
+    volumes:
+      - clawcluster_hiclaw_manager_data:/var/lib/clawcluster
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          (wget -qO- http://127.0.0.1:${HICLAW_MANAGER_PORT}/health >/dev/null 2>&1
+          || curl -fsS http://127.0.0.1:${HICLAW_MANAGER_PORT}/health >/dev/null 2>&1
+          || busybox wget -qO- http://127.0.0.1:${HICLAW_MANAGER_PORT}/health >/dev/null 2>&1)
+          || exit 1
+      <<: *http-health
+
+  planner-worker:
+    <<: *worker-defaults
+    environment:
+      <<: *worker-common-env
+      OPENCLAW_WORKER_CLASS: planner
+      OUTLINE_URL: ${OUTLINE_URL}
+      GRAPHITI_URL: ${GRAPHITI_URL}
+      HATCHET_SERVER_URL: ${HATCHET_SERVER_URL}
+    volumes:
+      - clawcluster_planner_worker_data:/var/lib/clawcluster
+
+  workflow-worker:
+    <<: *worker-defaults
+    environment:
+      <<: *worker-common-env
+      OPENCLAW_WORKER_CLASS: workflow
+      HATCHET_SERVER_URL: ${HATCHET_SERVER_URL}
+      DIFY_URL: ${DIFY_URL}
+      N8N_URL: ${N8N_URL}
+    volumes:
+      - clawcluster_workflow_worker_data:/var/lib/clawcluster
+
+  coding-worker:
+    <<: *worker-defaults
+    environment:
+      <<: *worker-common-env
+      OPENCLAW_WORKER_CLASS: coding
+      GITLAB_URL: ${GITLAB_URL}
+      GITLAB_TOKEN: ${GITLAB_TOKEN}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+    volumes:
+      - clawcluster_coding_worker_data:/var/lib/clawcluster
+
+  qa-worker:
+    <<: *worker-defaults
+    environment:
+      <<: *worker-common-env
+      OPENCLAW_WORKER_CLASS: qa
+      HATCHET_SERVER_URL: ${HATCHET_SERVER_URL}
+      LANGFUSE_URL: ${LANGFUSE_URL}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+    volumes:
+      - clawcluster_qa_worker_data:/var/lib/clawcluster
+
+  knowledge-worker:
+    <<: *worker-defaults
+    environment:
+      <<: *worker-common-env
+      OPENCLAW_WORKER_CLASS: knowledge
+      OUTLINE_URL: ${OUTLINE_URL}
+      OUTLINE_API_TOKEN: ${OUTLINE_API_TOKEN}
+      GRAPHITI_URL: ${GRAPHITI_URL}
+      LITELLM_URL: ${LITELLM_URL}
+      LITELLM_API_KEY: ${LITELLM_API_KEY}
+    volumes:
+      - clawcluster_knowledge_worker_data:/var/lib/clawcluster
+
+  # Intake bridge turns inbound requests and external events into managed work.
+  intake-bridge:
+    <<: *bridge-defaults
+    build:
+      context: ./services/intake-bridge
+    environment:
+      <<: *bridge-common-env
+      PORT: ${INTAKE_BRIDGE_PORT}
+      OUTLINE_URL: ${OUTLINE_URL}
+      OUTLINE_API_TOKEN: ${OUTLINE_API_TOKEN}
+      GITLAB_URL: ${GITLAB_URL}
+      GITLAB_TOKEN: ${GITLAB_TOKEN}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      DIFY_URL: ${DIFY_URL}
+      DIFY_API_KEY: ${DIFY_API_KEY}
+      N8N_URL: ${N8N_URL}
+      N8N_API_KEY: ${N8N_API_KEY}
+    ports:
+      - "${INTAKE_BRIDGE_PORT}:${INTAKE_BRIDGE_PORT}"
+    volumes:
+      - clawcluster_intake_bridge_data:/var/lib/clawcluster
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          (wget -qO- http://127.0.0.1:${INTAKE_BRIDGE_PORT}/health >/dev/null 2>&1
+          || curl -fsS http://127.0.0.1:${INTAKE_BRIDGE_PORT}/health >/dev/null 2>&1
+          || busybox wget -qO- http://127.0.0.1:${INTAKE_BRIDGE_PORT}/health >/dev/null 2>&1)
+          || exit 1
+      <<: *http-health
+
+  # Publisher bridge delivers approved outputs to downstream collaboration tools.
+  publisher-bridge:
+    <<: *bridge-defaults
+    build:
+      context: ./services/publisher-bridge
+    environment:
+      <<: *bridge-common-env
+      PORT: ${PUBLISHER_BRIDGE_PORT}
+      OUTLINE_URL: ${OUTLINE_URL}
+      OUTLINE_API_TOKEN: ${OUTLINE_API_TOKEN}
+      GITLAB_URL: ${GITLAB_URL}
+      GITLAB_TOKEN: ${GITLAB_TOKEN}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+    ports:
+      - "${PUBLISHER_BRIDGE_PORT}:${PUBLISHER_BRIDGE_PORT}"
+    volumes:
+      - clawcluster_publisher_bridge_data:/var/lib/clawcluster
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          (wget -qO- http://127.0.0.1:${PUBLISHER_BRIDGE_PORT}/health >/dev/null 2>&1
+          || curl -fsS http://127.0.0.1:${PUBLISHER_BRIDGE_PORT}/health >/dev/null 2>&1
+          || busybox wget -qO- http://127.0.0.1:${PUBLISHER_BRIDGE_PORT}/health >/dev/null 2>&1)
+          || exit 1
+      <<: *http-health
+
+  # Policy bridge externalizes approvals, guardrails, and human escalation.
+  policy-bridge:
+    <<: *bridge-defaults
+    build:
+      context: ./services/policy-bridge
+    environment:
+      <<: *bridge-common-env
+      PORT: ${POLICY_BRIDGE_PORT}
+      GITLAB_URL: ${GITLAB_URL}
+      GITLAB_TOKEN: ${GITLAB_TOKEN}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      TUWUNEL_SERVER_NAME: ${TUWUNEL_SERVER_NAME}
+      MATRIX_HOMESERVER_URL: ${MATRIX_HOMESERVER_URL}
+      MATRIX_ACCESS_TOKEN: ${MATRIX_ACCESS_TOKEN}
+    ports:
+      - "${POLICY_BRIDGE_PORT}:${POLICY_BRIDGE_PORT}"
+    volumes:
+      - clawcluster_policy_bridge_data:/var/lib/clawcluster
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          (wget -qO- http://127.0.0.1:${POLICY_BRIDGE_PORT}/health >/dev/null 2>&1
+          || curl -fsS http://127.0.0.1:${POLICY_BRIDGE_PORT}/health >/dev/null 2>&1
+          || busybox wget -qO- http://127.0.0.1:${POLICY_BRIDGE_PORT}/health >/dev/null 2>&1)
+          || exit 1
+      <<: *http-health
+
+  # Observability bridge centralizes telemetry, traces, and workflow event sinks.
+  observability-bridge:
+    <<: *bridge-defaults
+    build:
+      context: ./services/observability-bridge
+    environment:
+      <<: *bridge-common-env
+      PORT: ${OBSERVABILITY_BRIDGE_PORT}
+      LANGFUSE_URL: ${LANGFUSE_URL}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      GRAPHITI_URL: ${GRAPHITI_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      LITELLM_URL: ${LITELLM_URL}
+      LITELLM_API_KEY: ${LITELLM_API_KEY}
+      HATCHET_SERVER_URL: ${HATCHET_SERVER_URL}
+    ports:
+      - "${OBSERVABILITY_BRIDGE_PORT}:${OBSERVABILITY_BRIDGE_PORT}"
+    volumes:
+      - clawcluster_observability_bridge_data:/var/lib/clawcluster
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          (wget -qO- http://127.0.0.1:${OBSERVABILITY_BRIDGE_PORT}/health >/dev/null 2>&1
+          || curl -fsS http://127.0.0.1:${OBSERVABILITY_BRIDGE_PORT}/health >/dev/null 2>&1
+          || busybox wget -qO- http://127.0.0.1:${OBSERVABILITY_BRIDGE_PORT}/health >/dev/null 2>&1)
+          || exit 1
+      <<: *http-health
+
+  # Nginx provides a simple edge for single-node deployments and local smoke tests.
+  nginx:
+    <<: *service-defaults
+    image: nginx:1.25-alpine
+    pull_policy: if_not_present
+    depends_on:
+      higress:
+        condition: service_healthy
+      tuwunel:
+        condition: service_healthy
+      element-web:
+        condition: service_healthy
+      hiclaw-manager:
+        condition: service_healthy
+      intake-bridge:
+        condition: service_healthy
+      publisher-bridge:
+        condition: service_healthy
+      policy-bridge:
+        condition: service_healthy
+      observability-bridge:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        cat >/etc/nginx/nginx.conf <<EOF
+        worker_processes auto;
+        events { worker_connections 1024; }
+
+        stream {
+          upstream higress_tls {
+            server higress:8443;
+          }
+
+          server {
+            listen 443;
+            proxy_pass higress_tls;
+          }
+        }
+
+        http {
+          include       /etc/nginx/mime.types;
+          default_type  application/octet-stream;
+          sendfile      on;
+          keepalive_timeout 65;
+
+          upstream higress_http { server higress:8080; }
+          upstream matrix_api   { server tuwunel:6167; }
+          upstream element_ui   { server element-web:80; }
+          upstream manager_api  { server hiclaw-manager:${HICLAW_MANAGER_PORT}; }
+          upstream intake_api   { server intake-bridge:${INTAKE_BRIDGE_PORT}; }
+          upstream publisher_api { server publisher-bridge:${PUBLISHER_BRIDGE_PORT}; }
+          upstream policy_api   { server policy-bridge:${POLICY_BRIDGE_PORT}; }
+          upstream observability_api { server observability-bridge:${OBSERVABILITY_BRIDGE_PORT}; }
+
+          server {
+            listen 80;
+            server_name _;
+            client_max_body_size 64m;
+
+            location = /healthz {
+              add_header Content-Type text/plain;
+              return 200 'ok\n';
+            }
+
+            location /_matrix/ {
+              proxy_pass http://matrix_api;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
+            }
+
+            location /api/manager/ {
+              proxy_pass http://manager_api/;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
+            }
+
+            location /api/intake/ {
+              proxy_pass http://intake_api/;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
+            }
+
+            location /api/publisher/ {
+              proxy_pass http://publisher_api/;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
+            }
+
+            location /api/policy/ {
+              proxy_pass http://policy_api/;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
+            }
+
+            location /api/observability/ {
+              proxy_pass http://observability_api/;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
+            }
+
+            location /gateway/ {
+              proxy_pass http://higress_http/;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
+            }
+
+            location / {
+              proxy_pass http://element_ui;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
+            }
+          }
+        }
+        EOF
+        exec nginx -g 'daemon off;'
+    volumes:
+      - clawcluster_nginx_data:/var/cache/nginx
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          (wget -qO- http://127.0.0.1/healthz >/dev/null 2>&1
+          || curl -fsS http://127.0.0.1/healthz >/dev/null 2>&1
+          || busybox wget -qO- http://127.0.0.1/healthz >/dev/null 2>&1)
+          || exit 1
+      <<: *http-health
+
+volumes:
+  clawcluster_higress_data:
+    name: clawcluster_higress_data
+  clawcluster_tuwunel_data:
+    name: clawcluster_tuwunel_data
+  clawcluster_element_web_data:
+    name: clawcluster_element_web_data
+  clawcluster_hiclaw_manager_data:
+    name: clawcluster_hiclaw_manager_data
+  clawcluster_planner_worker_data:
+    name: clawcluster_planner_worker_data
+  clawcluster_workflow_worker_data:
+    name: clawcluster_workflow_worker_data
+  clawcluster_coding_worker_data:
+    name: clawcluster_coding_worker_data
+  clawcluster_qa_worker_data:
+    name: clawcluster_qa_worker_data
+  clawcluster_knowledge_worker_data:
+    name: clawcluster_knowledge_worker_data
+  clawcluster_intake_bridge_data:
+    name: clawcluster_intake_bridge_data
+  clawcluster_publisher_bridge_data:
+    name: clawcluster_publisher_bridge_data
+  clawcluster_policy_bridge_data:
+    name: clawcluster_policy_bridge_data
+  clawcluster_observability_bridge_data:
+    name: clawcluster_observability_bridge_data
+  clawcluster_nginx_data:
+    name: clawcluster_nginx_data
+
+networks:
+  clawcluster_net:
+    name: clawcluster_net
+    driver: bridge

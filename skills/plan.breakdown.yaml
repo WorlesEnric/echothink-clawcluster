@@ -1,0 +1,36 @@
+# ClawCluster skill manifest for work decomposition and estimation.
+apiVersion: clawcluster/v1
+kind: Skill
+metadata:
+  name: plan.breakdown
+  version: 1.0.0
+spec:
+  category: plan
+  runtimeClass: worker-container
+  description: Decompose a work item objective into executable subtasks, dependency edges, acceptance criteria, and effort estimates using supporting documents, graph context, and LLM reasoning.
+  inputs:
+    - work_item: object # Structured objective payload including scope, constraints, stakeholders, success criteria, and due-date context.
+    - supporting_docs: array[object] # Optional requirement docs, briefs, or excerpts that provide source material for the breakdown.
+    - graph_context: object # Optional Graphiti context bundle containing prior episodes, entities, and temporal signals relevant to the work.
+  outputs:
+    - task_breakdown: markdown # Narrative breakdown describing proposed phases, sequencing logic, risks, and planning assumptions.
+    - subtask_list: array[object] # Ordered subtasks with suggested owner role, acceptance criteria, dependencies, and execution notes.
+    - dependency_graph: object # Directed dependency graph showing prerequisite edges, parallel work lanes, and critical-path indicators.
+    - effort_estimates: object # Time and cost estimates per subtask, including confidence levels and rolled-up totals.
+  tools:
+    - outline.api
+    - graphiti.search
+    - higress.llm
+  mcpServices:
+    - outline
+    - graphiti
+    - higress
+  guardrails:
+    approvalClass: low
+    maxDurationSec: 300
+    maxCostUsd: 1.50
+    requiresValidation: [] # Planning output is advisory and does not require an automatic validation gate.
+  publishes: [] # The plan is returned to the caller for review and downstream execution.
+  retryPolicy:
+    maxAttempts: 2
+    backoffSeconds: 20

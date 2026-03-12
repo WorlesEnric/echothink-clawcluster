@@ -1,0 +1,116 @@
+{{- if .Values.ingress.enabled }}
+{{- $fullname := include "clawcluster.fullname" . -}}
+{{- $namespace := include "clawcluster.namespace" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "ingress") | nindent 4 }}
+  annotations:
+    {{- range $key, $value := .Values.ingress.annotations }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+    {{- if and .Values.ingress.tls.enabled .Values.ingress.tls.clusterIssuer }}
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.tls.clusterIssuer | quote }}
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className | default .Values.global.ingressClassName }}
+  rules:
+    - host: {{ .Values.ingress.hosts.gateway }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullname }}-higress
+                port:
+                  name: http
+    - host: {{ .Values.ingress.hosts.matrix }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullname }}-tuwunel
+                port:
+                  name: http
+    - host: {{ .Values.ingress.hosts.element }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullname }}-element-web
+                port:
+                  name: http
+    - host: {{ .Values.ingress.hosts.manager }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullname }}-hiclaw-manager
+                port:
+                  name: http
+    - host: {{ .Values.ingress.hosts.intake }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullname }}-intake-bridge
+                port:
+                  name: http
+    - host: {{ .Values.ingress.hosts.publisher }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullname }}-publisher-bridge
+                port:
+                  name: http
+    - host: {{ .Values.ingress.hosts.policy }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullname }}-policy-bridge
+                port:
+                  name: http
+    - host: {{ .Values.ingress.hosts.observability }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullname }}-observability-bridge
+                port:
+                  name: http
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - secretName: {{ .Values.ingress.tls.secretName }}
+      hosts:
+        - {{ .Values.ingress.hosts.gateway }}
+        - {{ .Values.ingress.hosts.matrix }}
+        - {{ .Values.ingress.hosts.element }}
+        - {{ .Values.ingress.hosts.manager }}
+        - {{ .Values.ingress.hosts.intake }}
+        - {{ .Values.ingress.hosts.publisher }}
+        - {{ .Values.ingress.hosts.policy }}
+        - {{ .Values.ingress.hosts.observability }}
+  {{- end }}
+{{- end }}

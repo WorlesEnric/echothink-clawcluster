@@ -1,0 +1,48 @@
+{{- $fullname := include "clawcluster.fullname" . -}}
+{{- $namespace := include "clawcluster.namespace" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-higress
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "higress") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.higress.service.httpPort }}
+      targetPort: http
+    - name: https
+      port: {{ .Values.higress.service.httpsPort }}
+      targetPort: https
+    - name: admin
+      port: {{ .Values.higress.service.adminPort }}
+      targetPort: admin
+  selector:
+    {{- include "clawcluster.componentSelectorLabels" (dict "ctx" . "component" "higress") | nindent 4 }}
+{{- if .Values.higress.service.external.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-higress-external
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "higress") | nindent 4 }}
+  {{- with .Values.higress.service.external.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.higress.service.external.type }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+    - name: https
+      port: 443
+      targetPort: https
+  selector:
+    {{- include "clawcluster.componentSelectorLabels" (dict "ctx" . "component" "higress") | nindent 4 }}
+{{- end }}

@@ -1,0 +1,24 @@
+{{- $root := . -}}
+{{- $fullname := include "clawcluster.fullname" $root -}}
+{{- $namespace := include "clawcluster.namespace" $root -}}
+{{- range $index, $worker := .Values.workers }}
+{{- if $index }}---
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-{{ $worker.name }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "clawcluster.componentLabels" (dict "ctx" $root "component" $worker.name) | nindent 4 }}
+data:
+  worker.yaml: |
+    name: {{ $worker.name | quote }}
+    role: {{ $worker.workerClass | quote }}
+    model: {{ $worker.model | quote }}
+    description: {{ $worker.description | quote }}
+    managerUrl: {{ printf "http://%s-hiclaw-manager:%v" $fullname $root.Values.hiclawManager.service.port | quote }}
+    gatewayUrl: {{ printf "http://%s-higress:%v" $fullname $root.Values.higress.service.httpPort | quote }}
+    matrixUrl: {{ printf "http://%s-tuwunel:%v" $fullname $root.Values.tuwunel.service.port | quote }}
+    sharedStorageBucket: {{ $root.Values.externalServices.minio.bucket | quote }}
+{{- end }}

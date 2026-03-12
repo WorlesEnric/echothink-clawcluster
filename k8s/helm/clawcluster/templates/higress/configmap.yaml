@@ -1,0 +1,17 @@
+{{- $fullname := include "clawcluster.fullname" . -}}
+{{- $namespace := include "clawcluster.namespace" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-higress
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "higress") | nindent 4 }}
+data:
+  gateway.yaml: |
+    clusterName: {{ .Values.higress.config.clusterName | quote }}
+    domain: {{ default .Values.global.domain .Values.higress.config.domain | quote }}
+    listeners:
+      http: {{ .Values.higress.service.httpPort }}
+      https: {{ .Values.higress.service.httpsPort }}
+      admin: {{ .Values.higress.service.adminPort }}

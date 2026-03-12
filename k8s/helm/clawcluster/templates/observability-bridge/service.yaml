@@ -1,0 +1,17 @@
+{{- $fullname := include "clawcluster.fullname" . -}}
+{{- $namespace := include "clawcluster.namespace" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-observability-bridge
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "observability-bridge") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.observabilityBridge.service.port }}
+      targetPort: http
+  selector:
+    {{- include "clawcluster.componentSelectorLabels" (dict "ctx" . "component" "observability-bridge") | nindent 4 }}

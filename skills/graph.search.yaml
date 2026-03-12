@@ -1,0 +1,33 @@
+# ClawCluster skill manifest for Graphiti temporal knowledge retrieval.
+apiVersion: clawcluster/v1
+kind: Skill
+metadata:
+  name: graph.search
+  version: 1.0.0
+spec:
+  category: graph
+  runtimeClass: worker-container
+  description: Search the Graphiti temporal knowledge graph for relevant episodes, entities, and relationships, then condense the findings into a concise context summary.
+  inputs:
+    - query: string # Natural-language search query, entity name, or fact pattern to resolve against the temporal graph.
+    - entity_filters: array[string] # Optional entity labels or canonical ids used to narrow retrieval to specific domains, teams, or systems.
+    - time_range: object # Optional start and end timestamps, or a relative time window, constraining eligible episodes.
+    - max_results: integer # Maximum number of episodes to retrieve before summarization; recommended range is 1 through 25.
+  outputs:
+    - episodes: array[object] # Matching temporal episodes with ids, timestamps, provenance, and relevance snippets.
+    - entities: array[object] # Distinct entities referenced in the result set, including labels, types, and confidence scores.
+    - relationships: array[object] # Relevant graph edges connecting returned entities, with predicates and temporal qualifiers.
+    - context_summary: markdown # Compact synthesis of the most important facts and why they matter to the query.
+  tools:
+    - graphiti.api
+  mcpServices:
+    - graphiti
+  guardrails:
+    approvalClass: none
+    maxDurationSec: 30
+    maxCostUsd: 0.05
+    requiresValidation: [] # Retrieval output is informational and side-effect free.
+  publishes: [] # Search results are returned inline to the invoking workflow.
+  retryPolicy:
+    maxAttempts: 3
+    backoffSeconds: 3

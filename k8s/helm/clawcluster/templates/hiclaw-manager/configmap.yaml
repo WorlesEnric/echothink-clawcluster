@@ -1,0 +1,35 @@
+{{- $fullname := include "clawcluster.fullname" . -}}
+{{- $namespace := include "clawcluster.namespace" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-hiclaw-manager
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "clawcluster.componentLabels" (dict "ctx" . "component" "hiclaw-manager") | nindent 4 }}
+data:
+  manager.yaml: |
+    name: manager
+    role: manager
+    model: {{ .Values.hiclawManager.config.model | quote }}
+    clusterName: {{ .Values.global.clusterName | quote }}
+    workspace: {{ .Values.hiclawManager.workspace.mountPath | quote }}
+    matrixBaseUrl: {{ printf "http://%s-tuwunel:%v" $fullname .Values.tuwunel.service.port | quote }}
+    gatewayBaseUrl: {{ printf "http://%s-higress:%v" $fullname .Values.higress.service.httpPort | quote }}
+    workers:
+{{- range .Values.workers }}
+      - name: {{ .name | quote }}
+        role: {{ .workerClass | quote }}
+        service: {{ printf "%s-%s" $fullname .name | quote }}
+        configPath: {{ printf "%s/%s/openclaw.yaml" $.Values.hiclawManager.agentConfigMountPath .name | quote }}
+{{- end }}
+{{- range .Values.workers }}
+  {{ .name }}.yaml: |
+    name: {{ .name | quote }}
+    role: {{ .workerClass | quote }}
+    model: {{ .model | quote }}
+    description: {{ .description | quote }}
+    managerUrl: {{ printf "http://%s-hiclaw-manager:%v" $fullname $.Values.hiclawManager.service.port | quote }}
+    gatewayUrl: {{ printf "http://%s-higress:%v" $fullname $.Values.higress.service.httpPort | quote }}
+    matrixUrl: {{ printf "http://%s-tuwunel:%v" $fullname $.Values.tuwunel.service.port | quote }}
+{{- end }}

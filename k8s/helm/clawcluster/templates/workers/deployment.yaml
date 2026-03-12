@@ -1,0 +1,129 @@
+{{- $root := . -}}
+{{- $fullname := include "clawcluster.fullname" $root -}}
+{{- $namespace := include "clawcluster.namespace" $root -}}
+{{- range $index, $worker := .Values.workers }}
+{{- if $index }}---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-{{ $worker.name }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "clawcluster.componentLabels" (dict "ctx" $root "component" $worker.name) | nindent 4 }}
+spec:
+  replicas: {{ $worker.replicas }}
+  selector:
+    matchLabels:
+      {{- include "clawcluster.componentSelectorLabels" (dict "ctx" $root "component" $worker.name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "clawcluster.componentLabels" (dict "ctx" $root "component" $worker.name) | nindent 8 }}
+    spec:
+      {{- with $worker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $worker.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $worker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $worker.name }}
+          {{- include "clawcluster.image" (dict "image" $worker.image "policy" $root.Values.global.imagePullPolicy) | nindent 10 }}
+          env:
+            - name: OPENCLAW_NODE_ROLE
+              value: worker
+            - name: OPENCLAW_WORKER_CLASS
+              value: {{ $worker.workerClass | quote }}
+            - name: OPENCLAW_MANAGER_URL
+              value: {{ printf "http://%s-hiclaw-manager:%v" $fullname $root.Values.hiclawManager.service.port | quote }}
+            - name: OPENCLAW_CLUSTER_NAME
+              value: {{ $root.Values.global.clusterName | quote }}
+            - name: OPENCLAW_DOMAIN
+              value: {{ $root.Values.global.domain | quote }}
+            - name: OPENCLAW_SHARED_STORAGE_PROVIDER
+              value: minio
+            - name: OPENCLAW_SHARED_STORAGE_ENDPOINT
+              value: {{ $root.Values.externalServices.minio.endpoint | quote }}
+            - name: OPENCLAW_SHARED_STORAGE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.externalServices.minio.existingSecret }}
+                  key: {{ $root.Values.externalServices.minio.accessKeyKey }}
+            - name: OPENCLAW_SHARED_STORAGE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.externalServices.minio.existingSecret }}
+                  key: {{ $root.Values.externalServices.minio.secretKeyKey }}
+            - name: OPENCLAW_SHARED_STORAGE_BUCKET
+              value: {{ $root.Values.externalServices.minio.bucket | quote }}
+            - name: HICLAW_MANAGER_LOG_LEVEL
+              value: {{ $root.Values.hiclawManager.config.logLevel | quote }}
+            - name: WORKER_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.security.existingSecret }}
+                  key: {{ $root.Values.security.workerJwtSecretKey }}
+            - name: VPN_PEER_ENDPOINT
+              value: {{ $root.Values.security.vpnPeerEndpoint | quote }}
+            - name: MTLS_CA_CERT_PATH
+              value: {{ $root.Values.global.caMountPath | quote }}
+            {{- range $name, $value := $worker.env }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- range $name, $ref := $worker.secretEnv }}
+            - name: {{ $name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $ref.existingSecret | default $worker.existingSecret }}
+                  key: {{ $ref.key }}
+            {{- end }}
+          resources:
+            {{- toYaml $worker.resources | nindent 12 }}
+          volumeMounts:
+            - name: runtime
+              mountPath: /var/lib/clawcluster
+            - name: config
+              mountPath: /etc/openclaw/worker.yaml
+              subPath: worker.yaml
+            - name: ca-cert
+              mountPath: /etc/clawcluster/ca
+              readOnly: true
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - test -n "$OPENCLAW_WORKER_CLASS" && test -n "$OPENCLAW_MANAGER_URL" && test -d /var/lib/clawcluster && test -f /etc/openclaw/worker.yaml && test -n "$WORKER_JWT_SECRET"
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - test -n "$OPENCLAW_WORKER_CLASS" && test -n "$OPENCLAW_MANAGER_URL" && test -d /var/lib/clawcluster && test -f /etc/openclaw/worker.yaml
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+      volumes:
+        - name: runtime
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: {{ $fullname }}-{{ $worker.name }}
+        - name: ca-cert
+          secret:
+            secretName: {{ $root.Values.security.caSecretName }}
+            items:
+              - key: {{ $root.Values.security.caSecretKey }}
+                path: ca.pem
+{{- end }}

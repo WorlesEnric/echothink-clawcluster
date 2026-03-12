@@ -1,0 +1,6 @@
+apiVersion: v2
+name: clawcluster
+version: 0.1.0
+appVersion: 1.0.0
+description: Helm chart for the EchoThink ClawCluster control plane and integrations
+type: application

@@ -1,0 +1,30 @@
+# ClawCluster skill manifest for read-only Outline document extraction.
+apiVersion: clawcluster/v1
+kind: Skill
+metadata:
+  name: doc.outline.read
+  version: 1.0.0
+spec:
+  category: doc
+  runtimeClass: worker-container
+  description: Read an Outline document, normalize its heading hierarchy into structured content blocks, and resolve linked workspace documents for downstream planning or authoring tasks.
+  inputs:
+    - outline_doc_id: string # Outline document UUID, canonical slug, or shared path identifying the source document to read.
+    - extract_sections: array[string] # Optional ordered list of heading paths to extract; omit or pass an empty list to read the full document.
+  outputs:
+    - document_content: object # Normalized content bundle keyed by section path, including heading depth, markdown body, and subsection ordering.
+    - metadata: object # Document metadata such as title, collection, author, last editor, timestamps, and revision fingerprint.
+    - linked_docs: array[object] # Resolved internal Outline links with target document ids, titles, URLs, and anchor references.
+  tools:
+    - outline.api
+  mcpServices:
+    - outline
+  guardrails:
+    approvalClass: none
+    maxDurationSec: 60
+    maxCostUsd: 0.10
+    requiresValidation: [] # Read-only extraction is deterministic and requires no post-run approval checks.
+  publishes: [] # Results are returned to the caller and are not published to an external system.
+  retryPolicy:
+    maxAttempts: 2
+    backoffSeconds: 5
