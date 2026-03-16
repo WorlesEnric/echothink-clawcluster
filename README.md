@@ -99,6 +99,9 @@ EchoThink ClawCluster is the agent workforce and execution control plane for Ech
 - Runtime configuration contract: `.env.example`
 - Local deployment topology: `docker-compose.yml`
 - Common day-2 operations: `Makefile`
+- Task Center runtime contract: `docs/integrations/task-center-bridge.md`
+- Existing EchoThink bridge contracts: `docs/integrations/echothink-bridges.md`
+- Runtime architecture: `docs/architecture.md`
 
 ## Notes
 
