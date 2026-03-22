@@ -1,0 +1,336 @@
+networks:
+  echothink_internal:
+    external: true
+    name: echothink_echothink-internal
+  echothink_public:
+    external: true
+    name: echothink_echothink-public
+
+services:
+  higress:
+    image: higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/all-in-one:latest
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          (wget -qO- http://127.0.0.1:8080/ >/dev/null 2>&1
+          || curl -fsS http://127.0.0.1:8080/ >/dev/null 2>&1
+          || busybox wget -qO- http://127.0.0.1:8080/ >/dev/null 2>&1)
+          || exit 1
+
+  hiclaw-manager:
+    image: higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/hiclaw-manager:latest
+    environment:
+      HICLAW_ADMIN_USER: ${HICLAW_ADMIN_USER}
+      HICLAW_ADMIN_PASSWORD: ${HICLAW_ADMIN_PASSWORD}
+      HICLAW_MINIO_USER: ${HICLAW_MINIO_USER}
+      HICLAW_MINIO_PASSWORD: ${HICLAW_MINIO_PASSWORD}
+      HICLAW_REGISTRATION_TOKEN: ${HICLAW_REGISTRATION_TOKEN}
+      HICLAW_MATRIX_DOMAIN: ${HICLAW_MATRIX_DOMAIN}
+      OUTLINE_API_TOKEN: ${OUTLINE_API_TOKEN}
+      GITLAB_API_TOKEN: ${GITLAB_TOKEN}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_KEY}
+      POSTGRES_URL: ${SUPABASE_DB_DSN}
+      GRAPHITI_API_TOKEN: ${GRAPHITI_API_TOKEN:-local-graphiti-api-token}
+      HATCHET_API_TOKEN: ${HATCHET_API_TOKEN:-local-hatchet-api-token}
+      MATRIX_ACCESS_TOKEN_MANAGER: ${MATRIX_ACCESS_TOKEN}
+      HIGRESS_CONSUMER_TOKEN_MANAGER: ${HIGRESS_CONSUMER_TOKEN_MANAGER:-local-higress-consumer-token}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      TUWUNEL_SERVER_NAME: ${TUWUNEL_SERVER_NAME}
+    networks:
+      clawcluster_net: {}
+      echothink_internal: {}
+      echothink_public: {}
+
+  tuwunel:
+    image: ghcr.io/matrix-construct/tuwunel:latest
+    environment:
+      CONDUWUIT_SERVER_NAME: ${TUWUNEL_SERVER_NAME}
+      CONDUWUIT_DATABASE_PATH: /data
+      CONDUWUIT_ADDRESS: 0.0.0.0
+      CONDUWUIT_PORT: 6167
+      CONDUWUIT_ALLOW_REGISTRATION: "true"
+      CONDUWUIT_REGISTRATION_TOKEN: ${TUWUNEL_REGISTRATION_TOKEN}
+      CONDUWUIT_ALLOW_LEGACY_MEDIA: "true"
+    healthcheck:
+      test:
+        - CMD
+        - tuwunel
+        - --version
+    networks:
+      clawcluster_net: {}
+      echothink_internal: {}
+
+  planner-worker:
+    environment:
+      HICLAW_WORKER_NAME: planner-worker
+      HICLAW_FS_ENDPOINT: http://hiclaw-manager:9000
+      HICLAW_FS_ACCESS_KEY: ${HICLAW_MINIO_USER}
+      HICLAW_FS_SECRET_KEY: ${HICLAW_MINIO_PASSWORD}
+      OUTLINE_API_TOKEN: ${OUTLINE_API_TOKEN}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_KEY}
+      POSTGRES_URL: ${SUPABASE_DB_DSN}
+      GRAPHITI_API_TOKEN: ${GRAPHITI_API_TOKEN:-local-graphiti-api-token}
+      MATRIX_ACCESS_TOKEN_PLANNER_WORKER: ${MATRIX_ACCESS_TOKEN}
+      HIGRESS_CONSUMER_TOKEN_PLANNER_WORKER: ${HIGRESS_CONSUMER_TOKEN_PLANNER_WORKER:-local-higress-consumer-token}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      TUWUNEL_SERVER_NAME: ${TUWUNEL_SERVER_NAME}
+    networks:
+      clawcluster_net: {}
+      echothink_internal: {}
+      echothink_public: {}
+
+  workflow-worker:
+    environment:
+      HICLAW_WORKER_NAME: workflow-worker
+      HICLAW_FS_ENDPOINT: http://hiclaw-manager:9000
+      HICLAW_FS_ACCESS_KEY: ${HICLAW_MINIO_USER}
+      HICLAW_FS_SECRET_KEY: ${HICLAW_MINIO_PASSWORD}
+      OUTLINE_API_TOKEN: ${OUTLINE_API_TOKEN}
+      MATRIX_ACCESS_TOKEN_WORKFLOW_WORKER: ${MATRIX_ACCESS_TOKEN}
+      HIGRESS_CONSUMER_TOKEN_WORKFLOW_WORKER: ${HIGRESS_CONSUMER_TOKEN_WORKFLOW_WORKER:-local-higress-consumer-token}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      TUWUNEL_SERVER_NAME: ${TUWUNEL_SERVER_NAME}
+    networks:
+      clawcluster_net: {}
+      echothink_internal: {}
+      echothink_public: {}
+
+  coding-worker:
+    environment:
+      HICLAW_WORKER_NAME: coding-worker
+      HICLAW_FS_ENDPOINT: http://hiclaw-manager:9000
+      HICLAW_FS_ACCESS_KEY: ${HICLAW_MINIO_USER}
+      HICLAW_FS_SECRET_KEY: ${HICLAW_MINIO_PASSWORD}
+      GITLAB_API_TOKEN: ${GITLAB_TOKEN}
+      OUTLINE_API_TOKEN: ${OUTLINE_API_TOKEN}
+      GRAPHITI_API_TOKEN: ${GRAPHITI_API_TOKEN:-local-graphiti-api-token}
+      MATRIX_ACCESS_TOKEN_CODING_WORKER: ${MATRIX_ACCESS_TOKEN}
+      HIGRESS_CONSUMER_TOKEN_CODING_WORKER: ${HIGRESS_CONSUMER_TOKEN_CODING_WORKER:-local-higress-consumer-token}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      TUWUNEL_SERVER_NAME: ${TUWUNEL_SERVER_NAME}
+    networks:
+      clawcluster_net: {}
+      echothink_internal: {}
+      echothink_public: {}
+
+  qa-worker:
+    environment:
+      HICLAW_WORKER_NAME: qa-worker
+      HICLAW_FS_ENDPOINT: http://hiclaw-manager:9000
+      HICLAW_FS_ACCESS_KEY: ${HICLAW_MINIO_USER}
+      HICLAW_FS_SECRET_KEY: ${HICLAW_MINIO_PASSWORD}
+      GITLAB_API_TOKEN: ${GITLAB_TOKEN}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_KEY}
+      POSTGRES_URL: ${SUPABASE_DB_DSN}
+      MATRIX_ACCESS_TOKEN_QA_WORKER: ${MATRIX_ACCESS_TOKEN}
+      HIGRESS_CONSUMER_TOKEN_QA_WORKER: ${HIGRESS_CONSUMER_TOKEN_QA_WORKER:-local-higress-consumer-token}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      TUWUNEL_SERVER_NAME: ${TUWUNEL_SERVER_NAME}
+    networks:
+      clawcluster_net: {}
+      echothink_internal: {}
+      echothink_public: {}
+
+  knowledge-worker:
+    environment:
+      HICLAW_WORKER_NAME: knowledge-worker
+      HICLAW_FS_ENDPOINT: http://hiclaw-manager:9000
+      HICLAW_FS_ACCESS_KEY: ${HICLAW_MINIO_USER}
+      HICLAW_FS_SECRET_KEY: ${HICLAW_MINIO_PASSWORD}
+      GRAPHITI_API_TOKEN: ${GRAPHITI_API_TOKEN:-local-graphiti-api-token}
+      OUTLINE_API_TOKEN: ${OUTLINE_API_TOKEN}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_KEY}
+      POSTGRES_URL: ${SUPABASE_DB_DSN}
+      MATRIX_ACCESS_TOKEN_KNOWLEDGE_WORKER: ${MATRIX_ACCESS_TOKEN}
+      HIGRESS_CONSUMER_TOKEN_KNOWLEDGE_WORKER: ${HIGRESS_CONSUMER_TOKEN_KNOWLEDGE_WORKER:-local-higress-consumer-token}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      TUWUNEL_SERVER_NAME: ${TUWUNEL_SERVER_NAME}
+    networks:
+      clawcluster_net: {}
+      echothink_internal: {}
+      echothink_public: {}
+
+  intake-bridge:
+    environment:
+      SUPABASE_URL: ${SUPABASE_DB_DSN}
+    networks:
+      clawcluster_net: {}
+      echothink_internal: {}
+      echothink_public: {}
+
+  publisher-bridge:
+    environment:
+      SUPABASE_URL: ${SUPABASE_DB_DSN}
+      DIFY_URL: ${DIFY_URL}
+      DIFY_API_KEY: ${DIFY_API_KEY}
+      N8N_URL: ${N8N_URL}
+      N8N_API_KEY: ${N8N_API_KEY}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8101/health", timeout=5).read()
+    networks:
+      clawcluster_net: {}
+      echothink_internal: {}
+      echothink_public: {}
+
+  policy-bridge:
+    environment:
+      SUPABASE_DB_DSN: ${SUPABASE_DB_DSN}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8102/health", timeout=5).read()
+    networks:
+      clawcluster_net: {}
+      echothink_internal: {}
+      echothink_public: {}
+
+  observability-bridge:
+    environment:
+      SUPABASE_DB_DSN: ${SUPABASE_DB_DSN}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8103/health", timeout=5).read()
+    networks:
+      clawcluster_net: {}
+      echothink_internal: {}
+      echothink_public: {}
+
+  element-web:
+    user: "0:0"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          (wget -qO- http://127.0.0.1:8080/ >/dev/null 2>&1
+          || curl -fsS http://127.0.0.1:8080/ >/dev/null 2>&1
+          || busybox wget -qO- http://127.0.0.1:8080/ >/dev/null 2>&1)
+          || exit 1
+
+  nginx:
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        cat >/etc/nginx/nginx.conf <<EOF
+        worker_processes auto;
+        events { worker_connections 1024; }
+
+        stream {
+          upstream higress_tls {
+            server higress:8443;
+          }
+
+          server {
+            listen 443;
+            proxy_pass higress_tls;
+          }
+        }
+
+        http {
+          include       /etc/nginx/mime.types;
+          default_type  application/octet-stream;
+          sendfile      on;
+          keepalive_timeout 65;
+
+          upstream higress_http { server higress:8080; }
+          upstream matrix_api   { server tuwunel:6167; }
+          upstream element_ui   { server element-web:80; }
+          upstream manager_api  { server hiclaw-manager:${HICLAW_MANAGER_PORT}; }
+          upstream intake_api   { server intake-bridge:${INTAKE_BRIDGE_PORT}; }
+          upstream publisher_api { server publisher-bridge:${PUBLISHER_BRIDGE_PORT}; }
+          upstream policy_api   { server policy-bridge:${POLICY_BRIDGE_PORT}; }
+          upstream observability_api { server observability-bridge:${OBSERVABILITY_BRIDGE_PORT}; }
+
+          server {
+            listen 80;
+            server_name _;
+            client_max_body_size 64m;
+
+            location = /healthz {
+              add_header Content-Type text/plain;
+              return 200 'ok\n';
+            }
+
+            location /_matrix/ {
+              proxy_pass http://matrix_api;
+              proxy_set_header Host \$host;
+              proxy_set_header X-Real-IP \$remote_addr;
+              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto \$scheme;
+            }
+
+            location /api/manager/ {
+              proxy_pass http://manager_api/;
+              proxy_set_header Host \$host;
+              proxy_set_header X-Real-IP \$remote_addr;
+              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto \$scheme;
+            }
+
+            location /api/intake/ {
+              proxy_pass http://intake_api/;
+              proxy_set_header Host \$host;
+              proxy_set_header X-Real-IP \$remote_addr;
+              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto \$scheme;
+            }
+
+            location /api/publisher/ {
+              proxy_pass http://publisher_api/;
+              proxy_set_header Host \$host;
+              proxy_set_header X-Real-IP \$remote_addr;
+              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto \$scheme;
+            }
+
+            location /api/policy/ {
+              proxy_pass http://policy_api/;
+              proxy_set_header Host \$host;
+              proxy_set_header X-Real-IP \$remote_addr;
+              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto \$scheme;
+            }
+
+            location /api/observability/ {
+              proxy_pass http://observability_api/;
+              proxy_set_header Host \$host;
+              proxy_set_header X-Real-IP \$remote_addr;
+              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto \$scheme;
+            }
+
+            location /gateway/ {
+              proxy_pass http://higress_http/;
+              proxy_set_header Host \$host;
+              proxy_set_header X-Real-IP \$remote_addr;
+              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto \$scheme;
+            }
+
+            location / {
+              proxy_pass http://element_ui;
+              proxy_set_header Host \$host;
+              proxy_set_header X-Real-IP \$remote_addr;
+              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto \$scheme;
+            }
+          }
+        }
+        EOF
+        exec nginx -g 'daemon off;'

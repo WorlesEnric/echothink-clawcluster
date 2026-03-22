@@ -1,0 +1,6 @@
+[
+  "tests/test_gitlab_publisher.py::test_gitlab_publisher_creates_branch_and_commit",
+  "tests/test_gitlab_publisher.py::test_gitlab_publisher_opens_merge_request",
+  "tests/test_outline_publisher.py::test_outline_publisher_creates_document",
+  "tests/test_outline_publisher.py::test_outline_publisher_updates_existing_document"
+]
