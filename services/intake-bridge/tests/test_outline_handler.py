@@ -48,9 +48,10 @@ Build an n8n workflow to publish approved drafts automatically.
     assert payload["processing"]["storage"]["status"] == "ok"
     assert payload["processing"]["manager"]["status"] == "ok"
 
-    storage_key = f"hiclaw-storage/shared/tasks/task-{work_item['id']}/spec.md"
+    storage_key = f"shared/tasks/task-{work_item['id']}/spec.md"
     assert storage_key in service_app.state.minio.objects
     assert service_app.state.manager.notifications[0]["id"] == work_item["id"]
+    assert "## Objective" in service_app.state.manager.notifications[0]["spec_markdown"]
 
 
 @pytest.mark.asyncio

@@ -22,6 +22,7 @@ def test_work_item_create_normalizes_fields() -> None:
     assert work_item.acceptance_criteria == ["Handle webhook signatures"]
     assert "unused" not in work_item.constraints_json
     assert "## Source Content" in work_item.render_spec_markdown()
+    assert "- Workspace: team-alpha" in work_item.render_spec_markdown()
 
 
 def test_work_item_priority_is_validated() -> None:

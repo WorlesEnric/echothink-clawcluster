@@ -384,6 +384,38 @@ services:
           || exit 1
       <<: *http-health
 
+  # Task Center bridge accepts canonical dispatches from EchoThink Task Center.
+  task-center-bridge:
+    <<: *bridge-defaults
+    build:
+      context: ./services/task-center-bridge
+    depends_on:
+      hiclaw-manager:
+        condition: service_healthy
+      intake-bridge:
+        condition: service_healthy
+    environment:
+      <<: *bridge-common-env
+      PORT: ${TASK_CENTER_BRIDGE_PORT:-8104}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      INTAKE_BRIDGE_URL: http://intake-bridge:${INTAKE_BRIDGE_PORT}
+      TASKCENTER_CALLBACK_URL: ${TASKCENTER_CALLBACK_URL:-http://taskcenter:8000/api/v1/webhooks/clawcluster}
+      TASKCENTER_CALLBACK_BEARER_TOKEN: ${TASKCENTER_CALLBACK_BEARER_TOKEN:-}
+    ports:
+      - "${TASK_CENTER_BRIDGE_PORT:-8104}:${TASK_CENTER_BRIDGE_PORT:-8104}"
+    volumes:
+      - clawcluster_task_center_bridge_data:/var/lib/clawcluster
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          (wget -qO- http://127.0.0.1:${TASK_CENTER_BRIDGE_PORT:-8104}/health >/dev/null 2>&1
+          || curl -fsS http://127.0.0.1:${TASK_CENTER_BRIDGE_PORT:-8104}/health >/dev/null 2>&1
+          || busybox wget -qO- http://127.0.0.1:${TASK_CENTER_BRIDGE_PORT:-8104}/health >/dev/null 2>&1)
+          || exit 1
+      <<: *http-health
+
   # Nginx provides a simple edge for single-node deployments and local smoke tests.
   nginx:
     <<: *service-defaults
@@ -406,6 +438,8 @@ services:
         condition: service_healthy
       observability-bridge:
         condition: service_healthy
+      task-center-bridge:
+        condition: service_healthy
     ports:
       - "80:80"
       - "443:443"
@@ -413,7 +447,7 @@ services:
       - /bin/sh
       - -ec
       - |
-        cat >/etc/nginx/nginx.conf <<EOF
+        cat >/etc/nginx/nginx.conf <<'EOF'
         worker_processes auto;
         events { worker_connections 1024; }
 
@@ -442,6 +476,7 @@ services:
           upstream publisher_api { server publisher-bridge:${PUBLISHER_BRIDGE_PORT}; }
           upstream policy_api   { server policy-bridge:${POLICY_BRIDGE_PORT}; }
           upstream observability_api { server observability-bridge:${OBSERVABILITY_BRIDGE_PORT}; }
+          upstream task_center_bridge_api { server task-center-bridge:${TASK_CENTER_BRIDGE_PORT:-8104}; }
 
           server {
             listen 80;
@@ -495,6 +530,14 @@ services:
 
             location /api/observability/ {
               proxy_pass http://observability_api/;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
+            }
+
+            location /api/task-center/ {
+              proxy_pass http://task_center_bridge_api/;
               proxy_set_header Host $$host;
               proxy_set_header X-Real-IP $$remote_addr;
               proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
@@ -559,6 +602,8 @@ volumes:
     name: clawcluster_policy_bridge_data
   clawcluster_observability_bridge_data:
     name: clawcluster_observability_bridge_data
+  clawcluster_task_center_bridge_data:
+    name: clawcluster_task_center_bridge_data
   clawcluster_nginx_data:
     name: clawcluster_nginx_data
 

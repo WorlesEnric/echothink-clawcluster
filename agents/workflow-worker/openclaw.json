@@ -1,102 +1,96 @@
 {
-  "name": "workflow-worker",
-  "version": "1.0.0",
-  "role": "workflow",
-  "description": "Builds and validates Dify and n8n workflows from business and operational intent.",
-  "model": "claude-sonnet-4-6",
-  "systemPromptExtensions": [
-    "Prefer minimal, testable Dify and n8n workflows with explicit triggers and outputs.",
-    "Validate syntax, schemas, retries, and side effects before recommending publish.",
-    "Never hardcode secrets; keep credentials external and referenced safely.",
-    "Document dependencies, failure paths, and production impact level for each workflow.",
-    "Escalate when publish safety, credentials, or external side effects are unclear."
-  ],
-  "mcpServers": {
-    "outline-mcp": {
-      "type": "sse",
-      "url": "http://outline.echothink.svc/mcp",
-      "args": [],
-      "env": {
-        "OUTLINE_API_URL": "http://outline.echothink.svc/api",
-        "OUTLINE_API_TOKEN": "${OUTLINE_API_TOKEN}"
-      }
+  "gateway": {
+    "mode": "local",
+    "port": 18800,
+    "auth": {
+      "token": "${HIGRESS_CONSUMER_TOKEN_WORKFLOW_WORKER}"
     },
-    "dify-mcp": {
-      "type": "sse",
-      "url": "http://dify.echothink.svc/mcp",
-      "args": [],
-      "env": {
-        "DIFY_BASE_URL": "http://dify.echothink.svc",
-        "DIFY_API_KEY": "${DIFY_API_KEY}"
-      }
-    },
-    "n8n-mcp": {
-      "type": "sse",
-      "url": "http://n8n.echothink.svc/mcp",
-      "args": [],
-      "env": {
-        "N8N_BASE_URL": "http://n8n.echothink.svc",
-        "N8N_API_KEY": "${N8N_API_KEY}"
-      }
-    },
-    "minio-mcp": {
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-server-s3"
+    "remote": {
+      "token": "${HIGRESS_CONSUMER_TOKEN_WORKFLOW_WORKER}"
+    }
+  },
+  "channels": {
+    "matrix": {
+      "enabled": true,
+      "homeserver": "${HICLAW_MATRIX_SERVER}",
+      "accessToken": "${MATRIX_ACCESS_TOKEN_WORKFLOW_WORKER}",
+      "dm": {
+        "policy": "allowlist",
+        "allowFrom": [
+          "@${HICLAW_ADMIN_USER}:${TUWUNEL_SERVER_NAME}"
+        ]
+      },
+      "groupPolicy": "allowlist",
+      "groupAllowFrom": [
+        "@manager:${TUWUNEL_SERVER_NAME}",
+        "@${HICLAW_ADMIN_USER}:${TUWUNEL_SERVER_NAME}"
       ],
-      "env": {
-        "S3_ENDPOINT": "http://minio.echothink.svc:9000",
-        "S3_FORCE_PATH_STYLE": "true",
-        "S3_BUCKET": "hiclaw-storage",
-        "AWS_REGION": "us-east-1",
-        "AWS_ACCESS_KEY_ID": "${MINIO_ACCESS_KEY}",
-        "AWS_SECRET_ACCESS_KEY": "${MINIO_SECRET_KEY}"
-      }
-    },
-    "matrix-mcp": {
-      "type": "sse",
-      "url": "http://tuwunel.clawcluster.svc:6167/mcp",
-      "args": [],
-      "env": {
-        "MATRIX_HOMESERVER_URL": "http://tuwunel.clawcluster.svc:6167",
-        "MATRIX_ACCESS_TOKEN": "${MATRIX_ACCESS_TOKEN_WORKFLOW_WORKER}"
+      "groups": {
+        "*": {
+          "allow": true,
+          "requireMention": true
+        }
       }
     }
   },
-  "memory": {
-    "type": "file",
-    "path": "/workspace/memory",
-    "maxSize": "10mb"
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "hiclaw-gateway": {
+        "baseUrl": "${LITELLM_URL}/v1",
+        "apiKey": "${LITELLM_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "cost-effective",
+            "name": "cost-effective",
+            "reasoning": true,
+            "contextWindow": 960000,
+            "maxTokens": 64000,
+            "input": [
+              "text",
+              "image"
+            ]
+          }
+        ]
+      }
+    }
   },
-  "tools": [
-    "task.receive",
-    "task.update",
-    "task.complete",
-    "task.escalate",
-    "outline.search",
-    "outline.read",
-    "dify.draft",
-    "dify.validate",
-    "dify.publish",
-    "n8n.draft",
-    "n8n.validate",
-    "n8n.publish",
-    "workflow.preview",
-    "minio.read",
-    "minio.write",
-    "matrix.read",
-    "matrix.send"
-  ],
-  "workspaceMount": "/workspace/agents/workflow-worker",
-  "storagePrefix": "hiclaw-storage/agents/workflow-worker/",
-  "higressConsumerToken": "${HIGRESS_CONSUMER_TOKEN_WORKFLOW_WORKER}",
-  "matrixUserId": "@workflow-worker:${TUWUNEL_SERVER_NAME}",
-  "approvalClass": "workflow",
-  "maxConcurrentTasks": 2,
-  "heartbeatIntervalSec": 30,
-  "idleTimeoutSec": 300,
-  "logLevel": "info",
-  "langfuseEnabled": true
+  "agents": {
+    "defaults": {
+      "timeoutSeconds": 1800,
+      "workspace": "/root",
+      "model": {
+        "primary": "hiclaw-gateway/cost-effective"
+      },
+      "maxConcurrent": 2,
+      "subagents": {
+        "maxConcurrent": 8
+      }
+    }
+  },
+  "session": {
+    "resetByType": {
+      "dm": {
+        "mode": "daily",
+        "atHour": 4
+      },
+      "group": {
+        "mode": "idle",
+        "idleMinutes": 2880
+      }
+    }
+  },
+  "plugins": {
+    "load": {
+      "paths": [
+        "/opt/openclaw/extensions/matrix"
+      ]
+    },
+    "entries": {
+      "matrix": {
+        "enabled": true
+      }
+    }
+  }
 }

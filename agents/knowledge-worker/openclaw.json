@@ -1,87 +1,96 @@
 {
-  "name": "knowledge-worker",
-  "version": "1.0.0",
-  "role": "knowledge",
-  "description": "Curates Graphiti knowledge, detects conflicts, and preserves high-trust shared context.",
-  "model": "claude-sonnet-4-6",
-  "systemPromptExtensions": [
-    "Write durable knowledge only when it is source-backed, current enough, and useful.",
-    "Track provenance, freshness, conflicts, and supersession status for stored facts.",
-    "Prefer concise summaries with links over verbose transcript dumps.",
-    "Treat stale, conflicting, or weakly sourced information as provisional until resolved.",
-    "Escalate when memory writes or source conflicts require human judgment."
-  ],
-  "mcpServers": {
-    "graphiti-mcp": {
-      "type": "sse",
-      "url": "http://graphiti.echothink.svc:8000/mcp",
-      "args": [],
-      "env": {
-        "GRAPHITI_BASE_URL": "http://graphiti.echothink.svc:8000",
-        "GRAPHITI_API_TOKEN": "${GRAPHITI_API_TOKEN}"
-      }
+  "gateway": {
+    "mode": "local",
+    "port": 18800,
+    "auth": {
+      "token": "${HIGRESS_CONSUMER_TOKEN_KNOWLEDGE_WORKER}"
     },
-    "outline-mcp": {
-      "type": "sse",
-      "url": "http://outline.echothink.svc/mcp",
-      "args": [],
-      "env": {
-        "OUTLINE_API_URL": "http://outline.echothink.svc/api",
-        "OUTLINE_API_TOKEN": "${OUTLINE_API_TOKEN}"
-      }
-    },
-    "supabase-mcp": {
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "-y",
-        "@supabase/mcp-server-supabase"
+    "remote": {
+      "token": "${HIGRESS_CONSUMER_TOKEN_KNOWLEDGE_WORKER}"
+    }
+  },
+  "channels": {
+    "matrix": {
+      "enabled": true,
+      "homeserver": "${HICLAW_MATRIX_SERVER}",
+      "accessToken": "${MATRIX_ACCESS_TOKEN_KNOWLEDGE_WORKER}",
+      "dm": {
+        "policy": "allowlist",
+        "allowFrom": [
+          "@${HICLAW_ADMIN_USER}:${TUWUNEL_SERVER_NAME}"
+        ]
+      },
+      "groupPolicy": "allowlist",
+      "groupAllowFrom": [
+        "@manager:${TUWUNEL_SERVER_NAME}",
+        "@${HICLAW_ADMIN_USER}:${TUWUNEL_SERVER_NAME}"
       ],
-      "env": {
-        "SUPABASE_URL": "http://supabase-kong.echothink.svc:8000",
-        "SUPABASE_SERVICE_ROLE_KEY": "${SUPABASE_SERVICE_ROLE_KEY}",
-        "POSTGRES_URL": "${POSTGRES_URL}"
-      }
-    },
-    "matrix-mcp": {
-      "type": "sse",
-      "url": "http://tuwunel.clawcluster.svc:6167/mcp",
-      "args": [],
-      "env": {
-        "MATRIX_HOMESERVER_URL": "http://tuwunel.clawcluster.svc:6167",
-        "MATRIX_ACCESS_TOKEN": "${MATRIX_ACCESS_TOKEN_KNOWLEDGE_WORKER}"
+      "groups": {
+        "*": {
+          "allow": true,
+          "requireMention": true
+        }
       }
     }
   },
-  "memory": {
-    "type": "file",
-    "path": "/workspace/memory",
-    "maxSize": "10mb"
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "hiclaw-gateway": {
+        "baseUrl": "${LITELLM_URL}/v1",
+        "apiKey": "${LITELLM_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "cost-effective",
+            "name": "cost-effective",
+            "reasoning": true,
+            "contextWindow": 960000,
+            "maxTokens": 64000,
+            "input": [
+              "text",
+              "image"
+            ]
+          }
+        ]
+      }
+    }
   },
-  "tools": [
-    "task.receive",
-    "task.update",
-    "task.complete",
-    "task.escalate",
-    "graphiti.read",
-    "graphiti.write",
-    "outline.search",
-    "outline.read",
-    "supabase.query",
-    "matrix.read",
-    "matrix.send",
-    "knowledge.conflict.detect",
-    "knowledge.staleness.check",
-    "knowledge.source.link"
-  ],
-  "workspaceMount": "/workspace/agents/knowledge-worker",
-  "storagePrefix": "hiclaw-storage/agents/knowledge-worker/",
-  "higressConsumerToken": "${HIGRESS_CONSUMER_TOKEN_KNOWLEDGE_WORKER}",
-  "matrixUserId": "@knowledge-worker:${TUWUNEL_SERVER_NAME}",
-  "approvalClass": "knowledge",
-  "maxConcurrentTasks": 2,
-  "heartbeatIntervalSec": 30,
-  "idleTimeoutSec": 300,
-  "logLevel": "info",
-  "langfuseEnabled": true
+  "agents": {
+    "defaults": {
+      "timeoutSeconds": 1800,
+      "workspace": "/root",
+      "model": {
+        "primary": "hiclaw-gateway/cost-effective"
+      },
+      "maxConcurrent": 2,
+      "subagents": {
+        "maxConcurrent": 8
+      }
+    }
+  },
+  "session": {
+    "resetByType": {
+      "dm": {
+        "mode": "daily",
+        "atHour": 4
+      },
+      "group": {
+        "mode": "idle",
+        "idleMinutes": 2880
+      }
+    }
+  },
+  "plugins": {
+    "load": {
+      "paths": [
+        "/opt/openclaw/extensions/matrix"
+      ]
+    },
+    "entries": {
+      "matrix": {
+        "enabled": true
+      }
+    }
+  }
 }

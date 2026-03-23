@@ -39,8 +39,8 @@ COPY src ./src
 
 USER appuser
 
-EXPOSE 8080
+EXPOSE 8104
 
-HEALTHCHECK CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5).read()" || exit 1
+HEALTHCHECK CMD curl -f http://localhost:8104/health || exit 1
 
-CMD ["/bin/sh", "-ec", "uvicorn src.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8104"]

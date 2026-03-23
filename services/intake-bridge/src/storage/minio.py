@@ -24,7 +24,7 @@ class MinioClient:
         return await asyncio.to_thread(self._head_bucket)
 
     async def stage_work_item_spec(self, work_item_id: str, markdown: str) -> str:
-        key = f"hiclaw-storage/shared/tasks/task-{work_item_id}/spec.md"
+        key = f"shared/tasks/task-{work_item_id}/spec.md"
         await asyncio.to_thread(self._put_object, key, markdown)
         return key
 

@@ -125,3 +125,41 @@ class SupabaseClient:
             raise RuntimeError("Supabase insert did not return a work item record")
 
         return WorkItem.model_validate(dict(record))
+
+    async def update_work_item_status(self, work_item_id: str, status: str) -> None:
+        pool = await self.connect()
+        query = """
+            UPDATE clawcluster.work_items
+            SET status = $2,
+                updated_at = now()
+            WHERE id = $1
+        """
+        async with pool.acquire() as connection:
+            await connection.execute(query, work_item_id, status)
+
+    async def upsert_external_refs(self, work_item_id: str, refs: dict[str, object]) -> dict[str, object]:
+        payload = {key: value for key, value in refs.items() if value is not None}
+        if not payload:
+            return {}
+
+        pool = await self.connect()
+        columns = ["work_item_id", *payload.keys()]
+        placeholders = ", ".join(f"${index}" for index in range(1, len(columns) + 1))
+        update_assignments = ", ".join(f"{column} = EXCLUDED.{column}" for column in payload)
+        query = f"""
+            INSERT INTO clawcluster.external_refs ({", ".join(columns)})
+            VALUES ({placeholders})
+            ON CONFLICT (work_item_id)
+            DO UPDATE SET
+                {update_assignments},
+                updated_at = now()
+            RETURNING *
+        """
+
+        async with pool.acquire() as connection:
+            record = await connection.fetchrow(query, work_item_id, *payload.values())
+
+        if record is None:
+            raise RuntimeError("Supabase upsert did not return an external_refs row")
+
+        return {key: record[key] for key in payload if key in record and record[key] is not None}

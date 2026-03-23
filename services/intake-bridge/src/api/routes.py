@@ -56,6 +56,7 @@ async def _persist_and_fanout(request: Request, work_item: WorkItemCreate) -> JS
     supabase = request.app.state.supabase
     minio = request.app.state.minio
     manager = request.app.state.manager
+    spec_markdown = work_item.render_spec_markdown()
 
     try:
         stored = await supabase.insert_work_item(work_item)
@@ -68,9 +69,9 @@ async def _persist_and_fanout(request: Request, work_item: WorkItemCreate) -> JS
 
     tasks = {
         "storage": asyncio.create_task(
-            minio.stage_work_item_spec(stored.id, work_item.render_spec_markdown())
+            minio.stage_work_item_spec(stored.id, spec_markdown)
         ),
-        "manager": asyncio.create_task(manager.notify_work_item(stored)),
+        "manager": asyncio.create_task(manager.notify_work_item(stored, spec_markdown)),
     }
     results = await asyncio.gather(*tasks.values(), return_exceptions=True)
 
@@ -89,6 +90,27 @@ async def _persist_and_fanout(request: Request, work_item: WorkItemCreate) -> JS
             processing[name]["path"] = result
         elif isinstance(result, dict) and result:
             processing[name]["response"] = result
+
+    manager_response = processing.get("manager", {}).get("response")
+    if processing.get("manager", {}).get("status") == "ok":
+        try:
+            sync_payload: dict[str, Any] = {"work_item_status": "assigned"}
+            await supabase.update_work_item_status(stored.id, "assigned")
+
+            matrix_room_id = ""
+            if isinstance(manager_response, dict):
+                matrix_room_id = str(manager_response.get("matrix_room_id") or "").strip()
+            if matrix_room_id:
+                await supabase.upsert_external_refs(stored.id, {"matrix_room_id": matrix_room_id})
+                sync_payload["matrix_room_id"] = matrix_room_id
+
+            processing["sync"] = {"status": "ok", **sync_payload}
+        except Exception as exc:
+            logger.error(
+                "post_fanout_sync_failed",
+                extra={"work_item_id": stored.id, "error": str(exc)},
+            )
+            processing["sync"] = {"status": "error", "detail": str(exc)}
 
     status_code = 201 if all(item["status"] == "ok" for item in processing.values()) else 202
     return JSONResponse(

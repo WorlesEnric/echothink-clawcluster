@@ -23,6 +23,7 @@ services:
     environment:
       HICLAW_ADMIN_USER: ${HICLAW_ADMIN_USER}
       HICLAW_ADMIN_PASSWORD: ${HICLAW_ADMIN_PASSWORD}
+      HICLAW_MANAGER_GATEWAY_KEY: ${HICLAW_MANAGER_GATEWAY_KEY:-local-hiclaw-manager-gateway-key}
       HICLAW_MINIO_USER: ${HICLAW_MINIO_USER}
       HICLAW_MINIO_PASSWORD: ${HICLAW_MINIO_PASSWORD}
       HICLAW_REGISTRATION_TOKEN: ${HICLAW_REGISTRATION_TOKEN}
@@ -33,8 +34,9 @@ services:
       POSTGRES_URL: ${SUPABASE_DB_DSN}
       GRAPHITI_API_TOKEN: ${GRAPHITI_API_TOKEN:-local-graphiti-api-token}
       HATCHET_API_TOKEN: ${HATCHET_API_TOKEN:-local-hatchet-api-token}
-      MATRIX_ACCESS_TOKEN_MANAGER: ${MATRIX_ACCESS_TOKEN}
+      MATRIX_ACCESS_TOKEN_MANAGER: ${MATRIX_ACCESS_TOKEN_MANAGER}
       HIGRESS_CONSUMER_TOKEN_MANAGER: ${HIGRESS_CONSUMER_TOKEN_MANAGER:-local-higress-consumer-token}
+      LITELLM_API_KEY: ${LITELLM_API_KEY}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       TUWUNEL_SERVER_NAME: ${TUWUNEL_SERVER_NAME}
@@ -42,6 +44,43 @@ services:
       clawcluster_net: {}
       echothink_internal: {}
       echothink_public: {}
+
+  hiclaw-manager-gateway-proxy:
+    image: nginx:1.25-alpine
+    init: true
+    restart: unless-stopped
+    pull_policy: if_not_present
+    depends_on:
+      hiclaw-manager:
+        condition: service_healthy
+    network_mode: service:hiclaw-manager
+    environment:
+      OPENCLAW_MANAGER_GATEWAY_PORT: ${OPENCLAW_MANAGER_GATEWAY_PORT:-18899}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        cat >/etc/nginx/nginx.conf <<EOF
+        worker_processes auto;
+        events { worker_connections 1024; }
+
+        http {
+          server {
+            listen $${OPENCLAW_MANAGER_GATEWAY_PORT};
+            client_max_body_size 512k;
+
+            location / {
+              proxy_pass http://127.0.0.1:18799;
+              proxy_http_version 1.1;
+              proxy_set_header Host \$$host;
+              proxy_set_header X-Real-IP \$$remote_addr;
+              proxy_set_header X-Forwarded-For \$$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto \$$scheme;
+            }
+          }
+        }
+        EOF
+        exec nginx -g 'daemon off;'
 
   tuwunel:
     image: ghcr.io/matrix-construct/tuwunel:latest
@@ -68,11 +107,16 @@ services:
       HICLAW_FS_ENDPOINT: http://hiclaw-manager:9000
       HICLAW_FS_ACCESS_KEY: ${HICLAW_MINIO_USER}
       HICLAW_FS_SECRET_KEY: ${HICLAW_MINIO_PASSWORD}
+      HICLAW_ADMIN_USER: ${HICLAW_ADMIN_USER}
+      HICLAW_MATRIX_SERVER: http://hiclaw-manager:6167
+      HICLAW_AI_GATEWAY: ${LITELLM_URL}
+      LITELLM_URL: ${LITELLM_URL}
+      LITELLM_API_KEY: ${LITELLM_API_KEY}
       OUTLINE_API_TOKEN: ${OUTLINE_API_TOKEN}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_KEY}
       POSTGRES_URL: ${SUPABASE_DB_DSN}
       GRAPHITI_API_TOKEN: ${GRAPHITI_API_TOKEN:-local-graphiti-api-token}
-      MATRIX_ACCESS_TOKEN_PLANNER_WORKER: ${MATRIX_ACCESS_TOKEN}
+      MATRIX_ACCESS_TOKEN_PLANNER_WORKER: ${MATRIX_ACCESS_TOKEN_PLANNER_WORKER}
       HIGRESS_CONSUMER_TOKEN_PLANNER_WORKER: ${HIGRESS_CONSUMER_TOKEN_PLANNER_WORKER:-local-higress-consumer-token}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
@@ -88,8 +132,13 @@ services:
       HICLAW_FS_ENDPOINT: http://hiclaw-manager:9000
       HICLAW_FS_ACCESS_KEY: ${HICLAW_MINIO_USER}
       HICLAW_FS_SECRET_KEY: ${HICLAW_MINIO_PASSWORD}
+      HICLAW_ADMIN_USER: ${HICLAW_ADMIN_USER}
+      HICLAW_MATRIX_SERVER: http://hiclaw-manager:6167
+      HICLAW_AI_GATEWAY: ${LITELLM_URL}
+      LITELLM_URL: ${LITELLM_URL}
+      LITELLM_API_KEY: ${LITELLM_API_KEY}
       OUTLINE_API_TOKEN: ${OUTLINE_API_TOKEN}
-      MATRIX_ACCESS_TOKEN_WORKFLOW_WORKER: ${MATRIX_ACCESS_TOKEN}
+      MATRIX_ACCESS_TOKEN_WORKFLOW_WORKER: ${MATRIX_ACCESS_TOKEN_WORKFLOW_WORKER}
       HIGRESS_CONSUMER_TOKEN_WORKFLOW_WORKER: ${HIGRESS_CONSUMER_TOKEN_WORKFLOW_WORKER:-local-higress-consumer-token}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
@@ -105,10 +154,15 @@ services:
       HICLAW_FS_ENDPOINT: http://hiclaw-manager:9000
       HICLAW_FS_ACCESS_KEY: ${HICLAW_MINIO_USER}
       HICLAW_FS_SECRET_KEY: ${HICLAW_MINIO_PASSWORD}
+      HICLAW_ADMIN_USER: ${HICLAW_ADMIN_USER}
+      HICLAW_MATRIX_SERVER: http://hiclaw-manager:6167
+      HICLAW_AI_GATEWAY: ${LITELLM_URL}
+      LITELLM_URL: ${LITELLM_URL}
+      LITELLM_API_KEY: ${LITELLM_API_KEY}
       GITLAB_API_TOKEN: ${GITLAB_TOKEN}
       OUTLINE_API_TOKEN: ${OUTLINE_API_TOKEN}
       GRAPHITI_API_TOKEN: ${GRAPHITI_API_TOKEN:-local-graphiti-api-token}
-      MATRIX_ACCESS_TOKEN_CODING_WORKER: ${MATRIX_ACCESS_TOKEN}
+      MATRIX_ACCESS_TOKEN_CODING_WORKER: ${MATRIX_ACCESS_TOKEN_CODING_WORKER}
       HIGRESS_CONSUMER_TOKEN_CODING_WORKER: ${HIGRESS_CONSUMER_TOKEN_CODING_WORKER:-local-higress-consumer-token}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
@@ -124,10 +178,15 @@ services:
       HICLAW_FS_ENDPOINT: http://hiclaw-manager:9000
       HICLAW_FS_ACCESS_KEY: ${HICLAW_MINIO_USER}
       HICLAW_FS_SECRET_KEY: ${HICLAW_MINIO_PASSWORD}
+      HICLAW_ADMIN_USER: ${HICLAW_ADMIN_USER}
+      HICLAW_MATRIX_SERVER: http://hiclaw-manager:6167
+      HICLAW_AI_GATEWAY: ${LITELLM_URL}
+      LITELLM_URL: ${LITELLM_URL}
+      LITELLM_API_KEY: ${LITELLM_API_KEY}
       GITLAB_API_TOKEN: ${GITLAB_TOKEN}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_KEY}
       POSTGRES_URL: ${SUPABASE_DB_DSN}
-      MATRIX_ACCESS_TOKEN_QA_WORKER: ${MATRIX_ACCESS_TOKEN}
+      MATRIX_ACCESS_TOKEN_QA_WORKER: ${MATRIX_ACCESS_TOKEN_QA_WORKER}
       HIGRESS_CONSUMER_TOKEN_QA_WORKER: ${HIGRESS_CONSUMER_TOKEN_QA_WORKER:-local-higress-consumer-token}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
@@ -143,11 +202,16 @@ services:
       HICLAW_FS_ENDPOINT: http://hiclaw-manager:9000
       HICLAW_FS_ACCESS_KEY: ${HICLAW_MINIO_USER}
       HICLAW_FS_SECRET_KEY: ${HICLAW_MINIO_PASSWORD}
+      HICLAW_ADMIN_USER: ${HICLAW_ADMIN_USER}
+      HICLAW_MATRIX_SERVER: http://hiclaw-manager:6167
+      HICLAW_AI_GATEWAY: ${LITELLM_URL}
+      LITELLM_URL: ${LITELLM_URL}
+      LITELLM_API_KEY: ${LITELLM_API_KEY}
       GRAPHITI_API_TOKEN: ${GRAPHITI_API_TOKEN:-local-graphiti-api-token}
       OUTLINE_API_TOKEN: ${OUTLINE_API_TOKEN}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_KEY}
       POSTGRES_URL: ${SUPABASE_DB_DSN}
-      MATRIX_ACCESS_TOKEN_KNOWLEDGE_WORKER: ${MATRIX_ACCESS_TOKEN}
+      MATRIX_ACCESS_TOKEN_KNOWLEDGE_WORKER: ${MATRIX_ACCESS_TOKEN_KNOWLEDGE_WORKER}
       HIGRESS_CONSUMER_TOKEN_KNOWLEDGE_WORKER: ${HIGRESS_CONSUMER_TOKEN_KNOWLEDGE_WORKER:-local-higress-consumer-token}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
@@ -158,7 +222,23 @@ services:
       echothink_public: {}
 
   intake-bridge:
+    depends_on:
+      hiclaw-manager:
+        condition: service_healthy
+      hiclaw-manager-gateway-proxy:
+        condition: service_started
     environment:
+      OPENCLAW_MANAGER_URL: http://hiclaw-manager:${OPENCLAW_MANAGER_GATEWAY_PORT:-18899}
+      OPENCLAW_MANAGER_AUTH_TOKEN: ${HICLAW_MANAGER_GATEWAY_KEY:-local-hiclaw-manager-gateway-key}
+      HICLAW_MATRIX_SERVER: http://hiclaw-manager:6167
+      HICLAW_MATRIX_DOMAIN: ${HICLAW_MATRIX_DOMAIN}
+      TUWUNEL_SERVER_NAME: ${TUWUNEL_SERVER_NAME}
+      MATRIX_ACCESS_TOKEN_MANAGER: ${MATRIX_ACCESS_TOKEN_MANAGER}
+      MATRIX_ACCESS_TOKEN_PLANNER_WORKER: ${MATRIX_ACCESS_TOKEN_PLANNER_WORKER}
+      MATRIX_ACCESS_TOKEN_WORKFLOW_WORKER: ${MATRIX_ACCESS_TOKEN_WORKFLOW_WORKER}
+      MATRIX_ACCESS_TOKEN_CODING_WORKER: ${MATRIX_ACCESS_TOKEN_CODING_WORKER}
+      MATRIX_ACCESS_TOKEN_QA_WORKER: ${MATRIX_ACCESS_TOKEN_QA_WORKER}
+      MATRIX_ACCESS_TOKEN_KNOWLEDGE_WORKER: ${MATRIX_ACCESS_TOKEN_KNOWLEDGE_WORKER}
       SUPABASE_URL: ${SUPABASE_DB_DSN}
     networks:
       clawcluster_net: {}
@@ -211,6 +291,21 @@ services:
       echothink_internal: {}
       echothink_public: {}
 
+  task-center-bridge:
+    environment:
+      SUPABASE_URL: ${SUPABASE_DB_DSN}
+      TASKCENTER_CALLBACK_URL: ${TASKCENTER_CALLBACK_URL:-http://taskcenter:8000/api/v1/webhooks/clawcluster}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8104/health", timeout=5).read()
+    networks:
+      clawcluster_net: {}
+      echothink_internal: {}
+      echothink_public: {}
+
   element-web:
     user: "0:0"
     healthcheck:
@@ -227,7 +322,7 @@ services:
       - /bin/sh
       - -ec
       - |
-        cat >/etc/nginx/nginx.conf <<EOF
+        cat >/etc/nginx/nginx.conf <<'EOF'
         worker_processes auto;
         events { worker_connections 1024; }
 
@@ -256,6 +351,7 @@ services:
           upstream publisher_api { server publisher-bridge:${PUBLISHER_BRIDGE_PORT}; }
           upstream policy_api   { server policy-bridge:${POLICY_BRIDGE_PORT}; }
           upstream observability_api { server observability-bridge:${OBSERVABILITY_BRIDGE_PORT}; }
+          upstream task_center_bridge_api { server task-center-bridge:${TASK_CENTER_BRIDGE_PORT:-8104}; }
 
           server {
             listen 80;
@@ -269,66 +365,74 @@ services:
 
             location /_matrix/ {
               proxy_pass http://matrix_api;
-              proxy_set_header Host \$host;
-              proxy_set_header X-Real-IP \$remote_addr;
-              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto \$scheme;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
             }
 
             location /api/manager/ {
               proxy_pass http://manager_api/;
-              proxy_set_header Host \$host;
-              proxy_set_header X-Real-IP \$remote_addr;
-              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto \$scheme;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
             }
 
             location /api/intake/ {
               proxy_pass http://intake_api/;
-              proxy_set_header Host \$host;
-              proxy_set_header X-Real-IP \$remote_addr;
-              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto \$scheme;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
             }
 
             location /api/publisher/ {
               proxy_pass http://publisher_api/;
-              proxy_set_header Host \$host;
-              proxy_set_header X-Real-IP \$remote_addr;
-              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto \$scheme;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
             }
 
             location /api/policy/ {
               proxy_pass http://policy_api/;
-              proxy_set_header Host \$host;
-              proxy_set_header X-Real-IP \$remote_addr;
-              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto \$scheme;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
             }
 
             location /api/observability/ {
               proxy_pass http://observability_api/;
-              proxy_set_header Host \$host;
-              proxy_set_header X-Real-IP \$remote_addr;
-              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto \$scheme;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
+            }
+
+            location /api/task-center/ {
+              proxy_pass http://task_center_bridge_api/;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
             }
 
             location /gateway/ {
               proxy_pass http://higress_http/;
-              proxy_set_header Host \$host;
-              proxy_set_header X-Real-IP \$remote_addr;
-              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto \$scheme;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
             }
 
             location / {
               proxy_pass http://element_ui;
-              proxy_set_header Host \$host;
-              proxy_set_header X-Real-IP \$remote_addr;
-              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto \$scheme;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $$scheme;
             }
           }
         }

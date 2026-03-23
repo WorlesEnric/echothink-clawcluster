@@ -42,7 +42,7 @@ class FakeMinioClient:
         self.objects: dict[str, str] = {}
 
     async def stage_work_item_spec(self, work_item_id: str, markdown: str) -> str:
-        key = f"hiclaw-storage/shared/tasks/task-{work_item_id}/spec.md"
+        key = f"shared/tasks/task-{work_item_id}/spec.md"
         self.objects[key] = markdown
         return key
 
@@ -54,10 +54,12 @@ class FakeManagerNotifier:
     def __init__(self) -> None:
         self.notifications: list[dict[str, Any]] = []
 
-    async def notify_work_item(self, work_item: WorkItem) -> dict[str, Any]:
+    async def notify_work_item(self, work_item: WorkItem, spec_markdown: str) -> dict[str, Any]:
         payload = work_item.model_dump(mode="json")
+        payload["sessionKey"] = f"hook:intake:{work_item.id}"
+        payload["spec_markdown"] = spec_markdown
         self.notifications.append(payload)
-        return {"accepted": True, "id": work_item.id}
+        return {"accepted": True, "id": work_item.id, "sessionKey": payload["sessionKey"]}
 
     async def ping(self) -> bool:
         return True
@@ -88,6 +90,7 @@ def settings() -> Settings:
         minio_secret_key="minio-secret-key",
         minio_hiclaw_bucket="clawcluster-sharedfs",
         hiclaw_manager_port=8088,
+        openclaw_manager_auth_token="manager-auth-token",
         cluster_name="clawcluster-test",
         domain="example.internal",
         worker_jwt_secret="super-secret-webhook-key",
