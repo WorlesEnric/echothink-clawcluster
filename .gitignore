@@ -1,0 +1,11 @@
+# Local environment and secret files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Common local secret material
+*.pem
+*.key
+*.p12
+*.pfx
